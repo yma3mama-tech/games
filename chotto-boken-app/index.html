@@ -232,8 +232,25 @@ const st = {
   mood: '🙂', moodNote: '', jumpBurst: 0, burstT: 0,
   rain: 0, rainNext: 150, umbrella: false, rainSeen: 0,
   holeStare: 0, catFollow: 0, lastIdleLine: 0, fade: 0, fadeDir: 0,
-  helper: null, splash: [], drops: [], nightFlag: false
+  helper: null, splash: [], drops: [], nightFlag: false,
+  exprName: '', exprT: 0, blink: 0, blinkNext: 3
 };
+
+/* ---------- 表情のきりかえ ---------- */
+function setExpr(name, dur) { st.exprName = name; st.exprT = dur || 2; }
+function currentExpr() {
+  if (P.inWater) return 'wet';
+  if (st.exprT > 0) return st.exprName;      // できごとによる一時的な顔
+  if (!P.onGround) return 'oh';              // 跳んでいるあいだ
+  if (st.dayP > .88 || st.idle > 60) return 'sleep';
+  if (st.rain > 0 && !st.umbrella) return 'tired';
+  if (save.jumps >= 1000) return 'blank';
+  if (st.jumpBurst >= 12) return 'think';
+  if (st.holeStare > 8) return 'wide';
+  if (st.catFollow > 3) return 'content';
+  if (st.idle > 20) return 'content';
+  return 'nose';
+}
 const cat  = { x: 1720, awake: false, vx: 0, phase: 0 };
 const bird = { x: 2380, y: 0, following: false, hop: 0, talkT: 4, sitting: true };
 
@@ -393,29 +410,67 @@ function drawPerson(x, y, o) {
   ctx.fill(); ctx.stroke();
 
   // ---- かお ----
-  const ink = o.ink || PAL.ink;
-  ctx.fillStyle = ink; ctx.strokeStyle = ink;
-  const ex = f * 2;
-  const eye = (dx, dy, r) => { ctx.beginPath(); ctx.ellipse(dx, dy, r, r * 1.15, 0, 0, 6.3); ctx.fill(); };
-  const ex2 = o.expr || 'nose';
-  if (ex2 === 'sleep') {
-    ctx.lineWidth = 2.6;
-    ctx.beginPath(); ctx.arc(-8 + ex, hy - 3, 4.5, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
-    ctx.beginPath(); ctx.arc(8 + ex, hy - 3, 4.5, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
-  } else {
-    eye(-8 + ex, hy - 5, 2.4); eye(8 + ex, hy - 5, 2.4);
-  }
-  if (ex2 === 'smile') {
-    ctx.lineWidth = 2.6;
-    ctx.beginPath(); ctx.arc(0 + ex, hy + 3, 6, 0.16 * Math.PI, 0.84 * Math.PI); ctx.stroke();
-  } else if (ex2 === 'oh') {
-    ctx.beginPath(); ctx.ellipse(1 + ex, hy + 5, 4.5, 5.5, 0, 0, 6.3); ctx.fill();
-  } else if (ex2 !== 'sleep') {
-    ctx.beginPath(); ctx.ellipse(f * 3, hy + 4, 3.2, 4.2, 0, 0, 6.3); ctx.fill();
-  } else {
-    ctx.beginPath(); ctx.ellipse(f * 3, hy + 5, 2.6, 3.4, 0, 0, 6.3); ctx.fill();
-  }
+  drawFace(hy, f, o.expr || 'nose', o.blink, o.ink || PAL.ink);
   ctx.restore();
+}
+
+/* 表情。[目, 口] の組み合わせでつくる */
+const FACES = {
+  nose:    ['dots',   'nose'],   // ふつう
+  smile:   ['dots',   'smile'],  // わらう
+  content: ['happy',  'smile'],  // ごきげん
+  oh:      ['wide',   'oh'],     // おどろく
+  wide:    ['wide',   'nose'],   // まじまじ見る
+  think:   ['look',   'wavy'],   // かんがえる
+  blank:   ['dots',   'flat'],   // むひょうじょう
+  tired:   ['half',   'flat'],   // ぐったり
+  wet:     ['dots',   'frown'],  // ぬれた
+  effort:  ['closed', 'flat'],   // ふんばる
+  sleep:   ['closed', 'small'],  // ねむい
+};
+function drawFace(hy, f, expr, blinking, ink) {
+  const F = FACES[expr] || FACES.nose;
+  let eyes = F[0]; const mouth = F[1];
+  // まばたきは、目をあけている表情のときだけ
+  if (blinking && (eyes === 'dots' || eyes === 'wide' || eyes === 'look')) eyes = 'closed';
+  ctx.fillStyle = ink; ctx.strokeStyle = ink;
+  const ex = f * 2, PI = Math.PI;
+  const dot = (dx, dy, r) => { ctx.beginPath(); ctx.ellipse(dx, dy, r, r * 1.15, 0, 0, 6.3); ctx.fill(); };
+
+  // ---- め ----
+  for (const side of [-1, 1]) {
+    const x = side * 8 + ex;
+    if (eyes === 'dots') dot(x, hy - 5, 2.4);
+    else if (eyes === 'wide') dot(x, hy - 5, 3.5);
+    else if (eyes === 'look') dot(x + f * 2, hy - 8, 2.4);
+    else if (eyes === 'closed') {
+      ctx.lineWidth = 2.6;
+      ctx.beginPath(); ctx.arc(x, hy - 3, 4.5, 0.15 * PI, 0.85 * PI); ctx.stroke();
+    } else if (eyes === 'happy') {
+      ctx.lineWidth = 2.6;
+      ctx.beginPath(); ctx.arc(x, hy - 2, 4.5, 1.14 * PI, 1.86 * PI); ctx.stroke();
+    } else if (eyes === 'half') {
+      ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.moveTo(x - 4.6, hy - 8); ctx.lineTo(x + 4.6, hy - 8); ctx.stroke();
+      dot(x, hy - 4, 2);
+    }
+  }
+
+  // ---- くち ----
+  ctx.lineWidth = 2.6;
+  if (mouth === 'nose') { ctx.beginPath(); ctx.ellipse(f * 3, hy + 4, 3.2, 4.2, 0, 0, 6.3); ctx.fill(); }
+  else if (mouth === 'small') { ctx.beginPath(); ctx.ellipse(f * 3, hy + 5, 2.6, 3.4, 0, 0, 6.3); ctx.fill(); }
+  else if (mouth === 'oh') { ctx.beginPath(); ctx.ellipse(1 + ex, hy + 5, 4.5, 5.5, 0, 0, 6.3); ctx.fill(); }
+  else if (mouth === 'smile') { ctx.beginPath(); ctx.arc(ex, hy + 3, 6, 0.16 * PI, 0.84 * PI); ctx.stroke(); }
+  else if (mouth === 'frown') { ctx.beginPath(); ctx.arc(ex, hy + 11, 6, 1.18 * PI, 1.82 * PI); ctx.stroke(); }
+  else if (mouth === 'flat') {
+    ctx.beginPath(); ctx.moveTo(ex - 5, hy + 5); ctx.lineTo(ex + 5, hy + 5); ctx.stroke();
+  } else if (mouth === 'wavy') {
+    ctx.beginPath(); ctx.moveTo(ex - 6, hy + 6);
+    ctx.quadraticCurveTo(ex - 3, hy + 2, ex, hy + 5);
+    ctx.quadraticCurveTo(ex + 3, hy + 8, ex + 6, hy + 4);
+    ctx.stroke();
+  }
 }
 
 /* ---------- ふきだし ---------- */
@@ -769,7 +824,7 @@ function updateRain(dt) {
     }
     if (st.rain <= 0) {
       if (!st.umbrella && st.rainSeen > 30) unlock('rain');
-      speak('やんだ。', 2.4);
+      speak('やんだ。', 2.4); setExpr('content', 2.6);
       st.rainNext = 180 + Math.random() * 200;
       st.rainSeen = 0;
     }
@@ -777,7 +832,7 @@ function updateRain(dt) {
     st.rainNext -= dt;
     if (st.rainNext <= 0) {
       st.rain = 70 + Math.random() * 40; st.rainSeen = 0;
-      speak('あ、雨。', 2.6);
+      speak('あ、雨。', 2.6); setExpr('oh', 1.8);
     }
   }
   for (let i = st.drops.length - 1; i >= 0; i--) {
@@ -871,7 +926,7 @@ function doJump() {
   if (P.indoors || P.inWater || !P.onGround) return;
   P.vy = -JUMPV; P.onGround = false;
   save.jumps++; st.jumpBurst++; st.burstT = 0;
-  for (const j of LINES.jump) if (save.jumps === j[0]) speak(j[1], 3);
+  for (const j of LINES.jump) if (save.jumps === j[0]) { speak(j[1], 3); setExpr('think', 3); }
   if (save.jumps >= 100) unlock('jump100');
   if (save.jumps >= 1000) unlock('jump1000');
   persistSoon();
@@ -907,36 +962,50 @@ function doAction() {
   if (!curAct) return;
   switch (curAct.id) {
     case 'house':
-      if (st.rain > 0 && !st.umbrella) { st.umbrella = true; speak('かさ、あった。', 2.6); }
-      else if (st.dayP > .82) goSleep();
-      else speak(pick(['ここが家。', 'まだ帰らない。', 'ちょっとそこまで、のつもりだった。']), 2.8);
+      if (st.rain > 0 && !st.umbrella) {
+        st.umbrella = true; speak('かさ、あった。', 2.6); setExpr('smile', 2.6);
+      } else if (st.dayP > .82) goSleep();
+      else {
+        speak(pick(['ここが家。', 'まだ帰らない。', 'ちょっとそこまで、のつもりだった。']), 2.8);
+        setExpr('content', 2.8);
+      }
       break;
     case 'rock':
-      save.rockPush++; persistSoon();
+      save.rockPush++; persistSoon(); setExpr('effort', 1.9);
       speak(LINES.rock[Math.min(save.rockPush - 1, LINES.rock.length - 1)], 2.6);
       if (save.rockPush >= 10) unlock('rock');
       break;
     case 'sign':
-      speak(LINES.sign[save.sign % LINES.sign.length], 3.2);
+      speak(LINES.sign[save.sign % LINES.sign.length], 3.2); setExpr('think', 3.2);
       save.sign++; unlock('sign'); persistSoon();
       break;
     case 'chest':
-      if (!save.chest) { save.chest = true; persist(); speak('……からっぽ。', 3.2); unlock('chest'); }
-      else speak(pick(['やっぱり、からっぽ。', 'ていねいに閉じた。', 'ここは、そういう宝箱。']), 2.8);
+      if (!save.chest) {
+        save.chest = true; persist(); speak('……からっぽ。', 3.2); unlock('chest');
+        setExpr('oh', 1.3);                                   // あけた瞬間は期待している
+        setTimeout(() => setExpr('blank', 2.4), 1300);        // 中身を見たあと
+      } else {
+        speak(pick(['やっぱり、からっぽ。', 'ていねいに閉じた。', 'ここは、そういう宝箱。']), 2.8);
+        setExpr('blank', 2.8);
+      }
       break;
     case 'hole':
-      speak(pick(LINES.hole), 2.8);
+      speak(pick(LINES.hole), 2.8); setExpr('wide', 2.8);
       break;
     case 'cat':
       if (!cat.awake) {
         cat.awake = true; cat.vx = 30;
-        speak('……起きた。', 2.6);
+        speak('……起きた。', 2.6); setExpr('oh', 1.6);
         setTimeout(() => speak('ついていくか。', 2.4), 2600);
-      } else speak(pick(['もふ。', '猫だ。', 'ごろごろ言っている。']), 2.4);
+      } else {
+        speak(pick(['もふ。', '猫だ。', 'ごろごろ言っている。']), 2.4);
+        setExpr('content', 2.6);
+      }
       break;
     case 'bird':
       bird.following = true; bird.talkT = 0.2;
       speak(pick(['どうも。', 'こんにちは。', '……。']), 2.2);
+      setExpr(save.birdTalks > 8 ? 'blank' : 'smile', 2.2);
       break;
   }
 }
@@ -957,6 +1026,7 @@ function goSleep() {
     persist();
     st.fadeDir = -1;
     speak(pick(['ちょっとそこまで。', 'きょうも、そとに出る。', 'あさだ。']), 3);
+    setExpr('sleep', 2.2);   // 起きぬけ
     sleeping = false;
   }, 2200);
 }
@@ -974,7 +1044,9 @@ function update(dt) {
   PAL.hole   = st.dayP > 0.93 ? '#1b2038' : '#4c5570';
   PAL.warm   = 'rgba(255,214,140,.9)';
 
-  if (st.dayP >= 0.82 && !st.nightFlag) { st.nightFlag = true; unlock('dayend'); speak('日が暮れた。', 3); }
+  if (st.dayP >= 0.82 && !st.nightFlag) {
+    st.nightFlag = true; unlock('dayend'); speak('日が暮れた。', 3); setExpr('wide', 2.6);
+  }
 
   // --- 入力 ---
   const dir = (keys.r ? 1 : 0) - (keys.l ? 1 : 0);
@@ -995,7 +1067,7 @@ function update(dt) {
   // --- じゅうりょく ---
   if (!P.onGround) {
     P.vy += GRAV * dt; P.y += P.vy * dt;
-    if (P.y >= 0) { P.y = 0; P.vy = 0; P.onGround = true; }
+    if (P.y >= 0) { P.y = 0; P.vy = 0; P.onGround = true; setExpr('smile', 0.5); }
   }
 
   // --- 川 ---
@@ -1035,7 +1107,7 @@ function update(dt) {
         H.state = 'go'; H.t = 0;
         P.inWater = false; P.y = 0; P.vy = 0; P.onGround = true;
         P.x = RIVER_X - RIVER_W / 2 - 30;
-        setTimeout(() => speak('最初から、あった。', 3), 900);
+        setTimeout(() => { speak('最初から、あった。', 3); setExpr('blank', 3); }, 900);
       }
     } else {
       H.x += 78 * dt; H.phase += dt * 8.5;
@@ -1076,6 +1148,8 @@ function update(dt) {
       bird.talkT = 5 + Math.random() * 4;
       birdSpeak = { text: pick(LINES.bird), t: 2.6 };
       save.birdTalks++; persistSoon();
+      // 何度も話しかけられると、だんだん無表情になる
+      if (st.exprT <= 0) setExpr(save.birdTalks > 8 ? 'blank' : 'wide', 2.2);
       if (save.birdTalks >= 20) unlock('bird');
     }
   }
@@ -1095,6 +1169,14 @@ function update(dt) {
     speak(pick(LINES.idle), 3);
   }
   if (st.idle < 1) st.lastIdleLine = 0;
+
+  // --- 表情とまばたき ---
+  if (st.exprT > 0) st.exprT -= dt;
+  if (st.blink > 0) st.blink -= dt;
+  else {
+    st.blinkNext -= dt;
+    if (st.blinkNext <= 0) { st.blink = 0.13; st.blinkNext = 2.5 + Math.random() * 5; }
+  }
 
   // --- ジャンプ連打 ---
   st.burstT += dt;
@@ -1186,7 +1268,7 @@ function render() {
   drawPerson(px, py, {
     facing: P.facing, walking: P.walking, phase: P.phase,
     jumping: !P.onGround,
-    expr: P.inWater ? 'oh' : (st.idle > 60 || st.dayP > .88 ? 'sleep' : (st.idle > 20 ? 'smile' : 'nose'))
+    expr: currentExpr(), blink: st.blink > 0
   });
   if (st.rain > 0 && st.umbrella) drawUmbrella(px, py);
 
