@@ -87,7 +87,7 @@
   .panel.on { display: flex; }
   .panel h2 { font-size: 18px; margin-bottom: 3px; }
   .panel .lead { font-size: 12px; opacity: .7; margin-bottom: 14px; line-height: 1.6; }
-  #achList { overflow-y: auto; flex: 1; -webkit-overflow-scrolling: touch; }
+  #achList, #diList { overflow-y: auto; flex: 1; -webkit-overflow-scrolling: touch; }
   .ach {
     display: flex; gap: 10px; align-items: baseline;
     border-bottom: 1.5px dashed rgba(34,49,92,.28); padding: 11px 2px;
@@ -96,6 +96,14 @@
   .ach .nm { font-size: 14.5px; font-weight: 700; line-height: 1.45; }
   .ach .hi { font-size: 11.5px; opacity: .6; margin-top: 2px; }
   .ach.lock .nm { opacity: .38; font-weight: 600; }
+
+  /* ---- 日記 ---- */
+  .di { border-bottom: 1.5px dashed rgba(34,49,92,.28); padding: 12px 2px; }
+  .di .hd { font-size: 11.5px; opacity: .62; font-weight: 700; letter-spacing: .04em; }
+  .di .tx { font-size: 14px; line-height: 1.75; margin-top: 3px; }
+  .di .wx { margin-left: 6px; }
+  #diList .none { font-size: 13px; opacity: .55; padding: 20px 2px; line-height: 1.9; }
+  body.night .di { border-bottom-color: rgba(238,241,251,.25); }
   .closebar { display: flex; justify-content: center; padding-top: 14px; }
   .wide {
     padding: 11px 30px; font-size: 15px; border-radius: 22px 24px 21px 23px;
@@ -134,6 +142,7 @@
       <div class="chip" id="sub" style="margin-top:6px">1日目</div>
     </div>
     <div id="topright">
+      <button class="iconbtn" id="btnDi" aria-label="日記">📖</button>
       <button class="iconbtn" id="btnAch" aria-label="実績">🏆</button>
     </div>
   </div>
@@ -156,6 +165,13 @@
     <div class="lead" id="achLead"></div>
     <div id="achList"></div>
     <div class="closebar"><button class="wide" id="achClose">とじる</button></div>
+  </div>
+
+  <div class="panel" id="diPanel">
+    <h2>にっき</h2>
+    <div class="lead" id="diLead"></div>
+    <div id="diList"></div>
+    <div class="closebar"><button class="wide" id="diClose">とじる</button></div>
   </div>
 
   <div id="title">
@@ -193,8 +209,12 @@ function loadSave() {
 }
 const save = Object.assign({
   day: 1, jumps: 0, laps: 0, achs: [], bridge: false,
-  chest: false, sign: 0, birdTalks: 0, rockPush: 0, totalPlay: 0
+  chest: false, sign: 0, birdTalks: 0, rockPush: 0, totalPlay: 0,
+  wx: '', quirk: '', wxSeen: [], quirkSeen: 0, diary: [],
+  lastDate: '', streak: 0
 }, loadSave());
+if (!Array.isArray(save.wxSeen)) save.wxSeen = [];
+if (!Array.isArray(save.diary)) save.diary = [];
 const unlocked = new Set(save.achs);
 let saveTimer = 0;
 function persist() {
@@ -220,7 +240,73 @@ const ACHS = [
   { id: 'nothing',  n: '何もしなかった',          h: '2分ほど、何もしない' },
   { id: 'dayend',   n: 'なぜか一日が終わった',    h: '夜になる' },
   { id: 'sleep',    n: 'ゲームを起動したまま寝た', h: '……30分' },
+  // ── ここから、ゆっくりたまるもの ──
+  { id: 'streak7',  n: '7日つづけて外に出た',      h: '7日、日をまたいで起動する' },
+  { id: 'day30',    n: '30日目',                  h: 'そんなに続くとは' },
+  { id: 'play1h',   n: '合計1時間、そとにいた',    h: 'いつのまにか' },
+  { id: 'snowday',  n: '雪の日も、そとに出た',     h: '雪の日に、しばらく歩く' },
+  { id: 'fogday',   n: 'なにも見えなかった',       h: '霧の日に、しばらく歩く' },
+  { id: 'allwx',    n: '天気をぜんぶ見た',         h: '天気は6とおり' },
+  { id: 'quirk10',  n: 'どうでもいいことに10回気づいた', h: '毎日、ひとつだけある' },
+  { id: 'diary10',  n: '日記が10日ぶんたまった',   h: '寝ると、1行のこる' },
 ];
+
+/* ---------- きょうの天気 ---------- */
+const WEATHERS = [
+  { id: 'usual', n: 'ふつう',     w: 30, line: '' },
+  { id: 'rain',  n: 'あめ',       w: 20, line: 'なんだか、降りそう。' },
+  { id: 'fog',   n: 'きり',       w: 14, line: '……なにも見えない。' },
+  { id: 'snow',  n: 'ゆき',       w: 10, line: 'ゆきだ。' },
+  { id: 'wind',  n: 'かぜ',       w: 14, line: '風が、つよい。' },
+  { id: 'fine',  n: 'やたら晴れ', w: 12, line: 'やたら晴れている。' },
+];
+function wxOf(id) { return WEATHERS.find(w => w.id === id) || WEATHERS[0]; }
+function rollWeather() {
+  let tot = 0; for (const w of WEATHERS) tot += w.w;
+  let r = Math.random() * tot;
+  for (const w of WEATHERS) { r -= w.w; if (r <= 0) return w.id; }
+  return 'usual';
+}
+
+/* ---------- きょうの、どうでもいいこと ----------
+   毎朝ひとつだけ世界に置かれ、翌朝には元にもどる。 */
+const QUIRKS = [
+  { id: 'snail',  n: '石の上に、カタツムリがいた' },
+  { id: 'sign',   n: '看板が、倒れていた' },
+  { id: 'leaf',   n: '宝箱に、葉っぱが1枚だけ入っていた' },
+  { id: 'cat2',   n: '猫が、2匹いた' },
+  { id: 'bird',   n: '鳥が、寝ていた' },
+  { id: 'river',  n: '川の水が、すこし多かった' },
+  { id: 'moon',   n: '昼なのに、月が出ていた' },
+  { id: 'flower', n: '家の前に、花が咲いていた' },
+];
+function qIs(id) { return save.quirk === id; }
+function noticeQuirk() {
+  if (st.quirkNoticed) return;
+  st.quirkNoticed = true;
+  save.quirkSeen++; persistSoon();
+  if (save.quirkSeen >= 10) unlock('quirk10');
+}
+
+/* あたらしい日を用意する（天気とどうでもいいことを引き直す） */
+function rollNewDay() {
+  // きのうと同じでは「きょうだけ」にならないので、1回だけ引き直す
+  const pw = save.wx, pq = save.quirk;
+  save.wx = rollWeather();
+  if (save.wx === pw) save.wx = rollWeather();
+  save.quirk = QUIRKS[Math.floor(Math.random() * QUIRKS.length)].id;
+  if (save.quirk === pq) {
+    const others = QUIRKS.filter(q => q.id !== pq);
+    save.quirk = others[Math.floor(Math.random() * others.length)].id;
+  }
+  if (save.wxSeen.indexOf(save.wx) < 0) save.wxSeen.push(save.wx);
+  if (save.wxSeen.length >= WEATHERS.length) unlock('allwx');
+  st.quirkNoticed = false;
+  st.fogT = 0; st.snowT = 0; st.flakes = []; st.leaves = [];
+  st.dJump = st.dBird = st.dRock = st.dSign = st.dLap = 0;
+  st.dWet = st.dUmb = st.dRain = st.dCat = st.dChest = false;
+  persist();
+}
 
 /* ---------- 状態 ---------- */
 const P = {
@@ -233,7 +319,14 @@ const st = {
   rain: 0, rainNext: 150, umbrella: false, rainSeen: 0,
   holeStare: 0, catFollow: 0, lastIdleLine: 0, fade: 0, fadeDir: 0,
   helper: null, splash: [], drops: [], nightFlag: false,
-  exprName: '', exprT: 0, blink: 0, blinkNext: 3
+  exprName: '', exprT: 0, blink: 0, blinkNext: 3,
+  // 天気のえんしゅつ
+  fog: 0, fogT: 0, snowT: 0, flakes: [], leaves: [], windT: 0,
+  // きょうの、どうでもいいこと
+  quirkNoticed: false,
+  // 日記のための、その日だけのかぞえ
+  dJump: 0, dBird: 0, dRock: 0, dSign: 0, dLap: 0,
+  dWet: false, dUmb: false, dRain: false, dCat: false, dChest: false
 };
 
 /* ---------- 表情のきりかえ ---------- */
@@ -252,6 +345,7 @@ function currentExpr() {
   return 'nose';
 }
 const cat  = { x: 1720, awake: false, vx: 0, phase: 0 };
+const CAT2_X = 1832;   // きょうだけ増える2匹目は、ここで寝つづける（1匹目と重ならない距離）
 const bird = { x: 2380, y: 0, following: false, hop: 0, talkT: 4, sitting: true };
 
 /* ---------- 乱数（手描きのゆらぎ） ---------- */
@@ -542,6 +636,46 @@ function drawHouse(x) {
   wrect(x + 8 * s, g - 50 * s, 30 * s, 26 * s, 5 * s); ctx.fill(); ctx.stroke();
   ctx.lineWidth = 2.2;
   wline(x + 23 * s, g - 50 * s, x + 23 * s, g - 24 * s, .8);
+  // きょうだけの花
+  if (qIs('flower')) for (let i = 0; i < 3; i++) drawFlower(x + (i - 1) * 22 * s + 58 * s, i);
+}
+/* きょうだけの、ちいさな花 */
+function drawFlower(x, k) {
+  const g = groundY, s = S;
+  const h = (14 + fixed(k * 37) * 6) * s;
+  ctx.lineWidth = 2; ctx.strokeStyle = PAL.ink;
+  ctx.beginPath(); ctx.moveTo(x, g);
+  ctx.quadraticCurveTo(x + 2 * s, g - h * .6, x, g - h); ctx.stroke();
+  ctx.fillStyle = st.dayP > .93 ? 'rgba(206,186,214,.9)' : 'rgba(250,214,224,.95)';
+  ctx.lineWidth = 1.8;
+  for (let i = 0; i < 5; i++) {
+    const a = i / 5 * Math.PI * 2;
+    ctx.beginPath();
+    ctx.ellipse(x + Math.cos(a) * 3.6 * s, g - h + Math.sin(a) * 3.6 * s, 3 * s, 3 * s, 0, 0, 6.3);
+    ctx.fill(); ctx.stroke();
+  }
+  ctx.fillStyle = PAL.ink;
+  ctx.beginPath(); ctx.arc(x, g - h, 1.6 * s, 0, 6.3); ctx.fill();
+}
+/* きょうだけの、カタツムリ */
+function drawSnail(x, y) {
+  const s = S;
+  ctx.lineWidth = 2.2; ctx.strokeStyle = PAL.ink; ctx.fillStyle = PAL.bubble;
+  blob(x, y, 9 * s, 8 * s, .8, 9); ctx.fill(); ctx.stroke();   // から
+  ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  for (let i = 0; i <= 22; i++) {
+    const a = i / 22 * Math.PI * 3.2, r = (1 - i / 26) * 7 * s;
+    const X2 = x + Math.cos(a) * r, Y2 = y + Math.sin(a) * r;
+    if (i === 0) ctx.moveTo(X2, Y2); else ctx.lineTo(X2, Y2);
+  }
+  ctx.stroke();
+  ctx.lineWidth = 2.2; ctx.fillStyle = PAL.bubble;
+  blob(x - 11 * s, y + 5 * s, 6 * s, 3.6 * s, .5, 8); ctx.fill(); ctx.stroke();  // からだ
+  ctx.lineWidth = 1.6;
+  const tw = Math.sin(st.time * 1.6) * 1.2 * s;
+  wline(x - 14 * s, y + 3 * s, x - 17 * s + tw, y - 4 * s, .4);
+  wline(x - 10 * s, y + 2 * s, x - 12 * s + tw, y - 5 * s, .4);
 }
 function drawRock(x) {
   const g = groundY, s = S;
@@ -563,15 +697,22 @@ function drawRock(x) {
   ctx.closePath(); ctx.fill(); ctx.stroke();
   ctx.lineWidth = 2;
   wline(x - 14 * s, g - 30 * s, x - 2 * s, g - 12 * s, 1.4);
+  // きょうだけのカタツムリ（石のてっぺん）
+  if (qIs('snail')) drawSnail(x + 6 * s, g - 44 * s);
 }
 function drawSign(x) {
   const g = groundY, s = S;
+  const down = qIs('sign');
+  ctx.save();
+  // きょうだけ、看板は倒れている
+  if (down) { ctx.translate(x, g); ctx.rotate(-1.32); ctx.translate(-x, -g); }
   ctx.lineWidth = 3.2; ctx.strokeStyle = PAL.ink; ctx.fillStyle = PAL.bubble;
   wline(x, g, x, g - 52 * s, 1);
   wrect(x - 30 * s, g - 84 * s, 60 * s, 36 * s, 4); ctx.fill(); ctx.stroke();
   ctx.fillStyle = PAL.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.font = '700 ' + Math.round(20 * s) + 'px sans-serif';
   ctx.fillText('？', x, g - 65 * s);
+  ctx.restore();
 }
 function drawChest(x) {
   const g = groundY, s = S;
@@ -591,6 +732,17 @@ function drawChest(x) {
   ctx.restore();
   ctx.fillStyle = PAL.ink;
   ctx.beginPath(); ctx.ellipse(x, g - 14 * s, 2.6 * s, 3.2 * s, 0, 0, 6.3); ctx.fill();
+  // きょうだけの葉っぱ（1枚だけ、ふちからのぞいている）
+  if (qIs('leaf')) {
+    ctx.save();
+    ctx.translate(x + 8 * s, g - 36 * s); ctx.rotate(-.35);
+    ctx.lineWidth = 2; ctx.strokeStyle = PAL.ink;
+    ctx.fillStyle = st.dayP > .93 ? 'rgba(126,150,132,.9)' : 'rgba(186,214,178,.95)';
+    ctx.beginPath(); ctx.ellipse(0, 0, 11 * s, 5 * s, 0, 0, 6.3); ctx.fill(); ctx.stroke();
+    ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.moveTo(-10 * s, 0); ctx.lineTo(10 * s, 0); ctx.stroke();
+    ctx.restore();
+  }
 }
 function drawTree(x, k) {
   const g = groundY, s = S;
@@ -613,29 +765,40 @@ function drawGrass(x, k) {
   }
   ctx.globalAlpha = 1;
 }
+/* ねている猫（きょうだけ2匹になることがあるので、切り出してある） */
+function drawSleepingCat(x, sc) {
+  const g = groundY, s = S * (sc || 1);
+  ctx.lineWidth = 3; ctx.strokeStyle = PAL.ink; ctx.fillStyle = PAL.bubble;
+  blob(x, g - 12 * s, 30 * s, 12 * s, 1.4, 10); ctx.fill(); ctx.stroke();     // からだ
+  blob(x - 30 * s, g - 17 * s, 14 * s, 12 * s, 1.2, 9); ctx.fill(); ctx.stroke(); // あたま
+  ctx.lineWidth = 2.4;
+  ctx.beginPath(); ctx.arc(x - 34 * s, g - 19 * s, 3.4 * s, .1 * Math.PI, .9 * Math.PI); ctx.stroke();
+  ctx.beginPath(); ctx.arc(x - 25 * s, g - 19 * s, 3.4 * s, .1 * Math.PI, .9 * Math.PI); ctx.stroke();
+  // みみ
+  ctx.lineWidth = 3;
+  wline(x - 38 * s, g - 25 * s, x - 34 * s, g - 32 * s, .6); wline(x - 34 * s, g - 32 * s, x - 30 * s, g - 25 * s, .6);
+  wline(x - 26 * s, g - 26 * s, x - 22 * s, g - 32 * s, .6); wline(x - 22 * s, g - 32 * s, x - 19 * s, g - 26 * s, .6);
+  // しっぽ
+  ctx.beginPath(); ctx.moveTo(x + 28 * s, g - 12 * s);
+  ctx.quadraticCurveTo(x + 48 * s, g - 16 * s, x + 42 * s, g - 30 * s); ctx.stroke();
+  // Zzz
+  ctx.fillStyle = PAL.ink; ctx.textAlign = 'left';
+  ctx.font = '700 ' + Math.round(13 * s) + 'px sans-serif';
+  const zz = Math.sin(st.time * 1.3) * 3 * s;
+  ctx.fillText('z', x + 16 * s, g - 34 * s + zz);
+  ctx.fillText('z', x + 26 * s, g - 46 * s + zz * .6);
+}
 function drawCat() {
+  // きょうだけ、もう1匹ねている（1匹目が起きて歩きだしても、こちらは寝たまま）
+  if (qIs('cat2')) {
+    const x2 = sx(CAT2_X);
+    if (x2 > -140 && x2 < SW + 140) drawSleepingCat(x2, .88);
+  }
   const x = sx(cat.x), g = groundY, s = S;
-  if (x < -120 || x > SW + 120) return;
+  if (x < -140 || x > SW + 140) return;
   ctx.lineWidth = 3; ctx.strokeStyle = PAL.ink; ctx.fillStyle = PAL.bubble;
   if (!cat.awake) {
-    blob(x, g - 12 * s, 30 * s, 12 * s, 1.4, 10); ctx.fill(); ctx.stroke();     // からだ
-    blob(x - 30 * s, g - 17 * s, 14 * s, 12 * s, 1.2, 9); ctx.fill(); ctx.stroke(); // あたま
-    ctx.lineWidth = 2.4;
-    ctx.beginPath(); ctx.arc(-0 + x - 34 * s, g - 19 * s, 3.4 * s, .1 * Math.PI, .9 * Math.PI); ctx.stroke();
-    ctx.beginPath(); ctx.arc(-0 + x - 25 * s, g - 19 * s, 3.4 * s, .1 * Math.PI, .9 * Math.PI); ctx.stroke();
-    // みみ
-    ctx.lineWidth = 3;
-    wline(x - 38 * s, g - 25 * s, x - 34 * s, g - 32 * s, .6); wline(x - 34 * s, g - 32 * s, x - 30 * s, g - 25 * s, .6);
-    wline(x - 26 * s, g - 26 * s, x - 22 * s, g - 32 * s, .6); wline(x - 22 * s, g - 32 * s, x - 19 * s, g - 26 * s, .6);
-    // しっぽ
-    ctx.beginPath(); ctx.moveTo(x + 28 * s, g - 12 * s);
-    ctx.quadraticCurveTo(x + 48 * s, g - 16 * s, x + 42 * s, g - 30 * s); ctx.stroke();
-    // Zzz
-    ctx.fillStyle = PAL.ink; ctx.textAlign = 'left';
-    ctx.font = '700 ' + Math.round(13 * s) + 'px sans-serif';
-    const zz = Math.sin(st.time * 1.3) * 3 * s;
-    ctx.fillText('z', x + 16 * s, g - 34 * s + zz);
-    ctx.fillText('z', x + 26 * s, g - 46 * s + zz * .6);
+    drawSleepingCat(x, 1);
   } else {
     const f = cat.vx >= 0 ? 1 : -1;
     ctx.save(); ctx.translate(x, 0); ctx.scale(f, 1);
@@ -661,6 +824,23 @@ function drawBird() {
   ctx.lineWidth = 2.8; ctx.strokeStyle = PAL.ink; ctx.fillStyle = PAL.bubble;
   const f = 1;
   blob(x, y - 13 * s, 14 * s, 12 * s, 1.2, 9); ctx.fill(); ctx.stroke();
+  // きょうだけ、鳥は寝ている
+  if (qIs('bird')) {
+    ctx.strokeStyle = PAL.ink; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x + 5 * s, y - 18 * s, 3 * s, .1 * Math.PI, .9 * Math.PI); ctx.stroke();
+    ctx.fillStyle = PAL.ink;
+    ctx.beginPath();
+    ctx.moveTo(x + 13 * s, y - 16 * s); ctx.lineTo(x + 22 * s, y - 14 * s); ctx.lineTo(x + 13 * s, y - 11 * s);
+    ctx.closePath(); ctx.fill();
+    ctx.textAlign = 'left';
+    ctx.font = '700 ' + Math.round(11 * s) + 'px sans-serif';
+    const zz = Math.sin(st.time * 1.3) * 2.6 * s;
+    ctx.fillText('z', x + 14 * s, y - 30 * s + zz);
+    ctx.fillText('z', x + 22 * s, y - 40 * s + zz * .6);
+    ctx.strokeStyle = PAL.ink; ctx.lineWidth = 2.2;
+    wline(x - 3 * s, y - 2 * s, x - 3 * s, y, .5); wline(x + 4 * s, y - 2 * s, x + 4 * s, y, .5);
+    return;
+  }
   ctx.fillStyle = PAL.ink;
   ctx.beginPath(); ctx.ellipse(x + 5 * s, y - 17 * s, 1.9 * s, 2.2 * s, 0, 0, 6.3); ctx.fill();
   ctx.beginPath();  // くちばし
@@ -704,11 +884,38 @@ function drawWorld() {
     ctx.beginPath(); ctx.arc(mx, groundY * .22, 17 * S, 0, 6.3); ctx.fill();
   }
 
-  // ---- くも ----
+  // ---- 昼の月（きょうだけ） ----
+  if (qIs('moon') && na < .5) {
+    const mx2 = ((SW * .70 - camX * .02) % SW + SW) % SW;
+    ctx.fillStyle = 'rgba(255,255,255,' + (0.62 - na) + ')';
+    ctx.beginPath(); ctx.arc(mx2, groundY * .19, 15 * S, 0, 6.3); ctx.fill();
+    ctx.strokeStyle = 'rgba(120,140,170,' + (0.34 - na * .5) + ')'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(mx2, groundY * .19, 15 * S, 0, 6.3); ctx.stroke();
+  }
+
+  // ---- やたら晴れの日の、おひさま ----
+  if (save.wx === 'fine' && na < .4) {
+    const sxp = ((SW * .82 - camX * .02) % SW + SW) % SW, syp = groundY * .17;
+    ctx.strokeStyle = 'rgba(255,206,128,' + (0.66 - na) + ')'; ctx.lineWidth = 2.6;
+    for (let i = 0; i < 10; i++) {
+      const a = i / 10 * Math.PI * 2 + st.time * .12;
+      const r0 = 22 * S, r1 = (30 + Math.sin(st.time * .9 + i) * 3) * S;
+      ctx.beginPath();
+      ctx.moveTo(sxp + Math.cos(a) * r0, syp + Math.sin(a) * r0);
+      ctx.lineTo(sxp + Math.cos(a) * r1, syp + Math.sin(a) * r1);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255,238,196,' + (0.85 - na) + ')';
+    ctx.beginPath(); ctx.arc(sxp, syp, 18 * S, 0, 6.3); ctx.fill();
+  }
+
+  // ---- くも（天気で数と流れかたが変わる） ----
+  const cN = save.wx === 'fine' ? 3 : (save.wx === 'rain' || save.wx === 'snow' ? 9 : 7);
+  const cDrift = save.wx === 'wind' ? st.time * 40 : 0;
   ctx.fillStyle = 'rgba(255,255,255,' + (0.72 - na * .5) + ')';
-  for (let i = 0; i < 7; i++) {
+  for (let i = 0; i < cN; i++) {
     const wx = fixed(i * 53) * WORLD;
-    let d = ((wx - camX * .18) % WORLD + WORLD) % WORLD;
+    let d = ((wx - camX * .18 - cDrift) % WORLD + WORLD) % WORLD;
     if (d > WORLD / 2) d -= WORLD;
     const X = d * (SW / (WORLD * .25)) % (SW + 300) - 100;
     const Y = 40 + fixed(i * 91) * groundY * .34;
@@ -742,9 +949,11 @@ function drawWorld() {
   // ---- 川 ----
   const rx = sx(RIVER_X), rw = RIVER_W * S;
   const rdep = 82 * S;
+  // きょうだけ、水がすこし多い
+  const hi = qIs('river') ? 7 * S : 0;
   if (rx > -rw && rx < SW + rw) {
     ctx.fillStyle = PAL.water;
-    ctx.fillRect(rx - rw / 2, groundY - 2, rw, rdep);
+    ctx.fillRect(rx - rw / 2 - hi, groundY - 2 - hi, rw + hi * 2, rdep + hi);
     ctx.fillStyle = PAL.gr;
     ctx.fillRect(rx - rw / 2, groundY - 2 + rdep, rw, SH);
     ctx.strokeStyle = PAL.ink; ctx.lineWidth = 3;
@@ -822,9 +1031,19 @@ function drawWorld() {
 
 /* ---------- 雨 ---------- */
 function updateRain(dt) {
+  if (save.wx !== 'rain') {
+    st.rain = 0;
+    for (let i = st.drops.length - 1; i >= 0; i--) {
+      const d = st.drops[i];
+      d.y += d.v * dt; d.x -= 40 * dt;
+      if (d.y > SH) st.drops.splice(i, 1);
+    }
+    return;
+  }
   if (st.rain > 0) {
     st.rain -= dt;
     st.rainSeen += dt;
+    st.dRain = true;
     if (st.drops.length < 90) {
       for (let i = 0; i < 3; i++)
         st.drops.push({ x: Math.random() * (SW + 120) - 60, y: -20, v: 620 + Math.random() * 260 });
@@ -854,6 +1073,84 @@ function drawRain() {
   ctx.beginPath();
   for (const d of st.drops) { ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - 3, d.y + 13); }
   ctx.stroke();
+}
+
+/* ---------- 霧・雪・風 ----------
+   雨とちがって、その日ずっと続く。急ぐ理由にはならない。 */
+function updateSky(dt) {
+  // きり（朝がいちばん濃く、昼にすこし晴れ、夕方にまた出る）
+  let want = 0;
+  if (save.wx === 'fog') {
+    want = st.dayP < .30 ? 1
+         : st.dayP < .62 ? 1 - (st.dayP - .30) * 1.7
+         : .48 + (st.dayP - .62) * .8;
+    want = Math.max(.34, Math.min(1, want));
+  }
+  st.fog += (want - st.fog) * Math.min(1, dt * .4);
+  if (st.fog < .003) st.fog = 0;
+  if (save.wx === 'fog' && st.fog > .55) {
+    st.fogT += dt;
+    if (st.fogT > 45) unlock('fogday');
+  }
+
+  // ゆき
+  if (save.wx === 'snow') {
+    st.snowT += dt;
+    if (st.snowT > 40) unlock('snowday');
+    while (st.flakes.length < 64 && Math.random() < dt * 26) {
+      st.flakes.push({
+        x: Math.random() * (SW + 80) - 40, y: -12,
+        v: 24 + Math.random() * 30, p: Math.random() * 6.3,
+        r: 1.5 + Math.random() * 2.2
+      });
+    }
+  }
+  for (let i = st.flakes.length - 1; i >= 0; i--) {
+    const f = st.flakes[i];
+    f.y += f.v * dt; f.p += dt * 1.5; f.x += Math.sin(f.p) * 16 * dt;
+    if (f.y > SH + 10) st.flakes.splice(i, 1);
+  }
+
+  // かぜ（葉っぱが右から左へ流れていく）
+  if (save.wx === 'wind') {
+    st.windT += dt;
+    while (st.leaves.length < 12 && Math.random() < dt * 2.2) {
+      st.leaves.push({
+        x: SW + 24, y: 40 + Math.random() * (groundY - 30),
+        v: 140 + Math.random() * 180, p: Math.random() * 6.3,
+        s: .7 + Math.random() * .7
+      });
+    }
+  }
+  for (let i = st.leaves.length - 1; i >= 0; i--) {
+    const l = st.leaves[i];
+    l.x -= l.v * dt; l.p += dt * 4.6; l.y += Math.sin(l.p) * 30 * dt;
+    if (l.x < -34) st.leaves.splice(i, 1);
+  }
+}
+function drawSnow() {
+  if (!st.flakes.length) return;
+  ctx.fillStyle = st.dayP > .93 ? 'rgba(228,234,252,.9)' : 'rgba(255,255,255,.94)';
+  for (const f of st.flakes) {
+    ctx.beginPath(); ctx.arc(f.x, f.y, f.r * S, 0, 6.3); ctx.fill();
+  }
+}
+function drawLeaves() {
+  if (!st.leaves.length) return;
+  ctx.strokeStyle = PAL.ink; ctx.lineWidth = 1.4;
+  ctx.fillStyle = st.dayP > .93 ? 'rgba(122,128,162,.85)' : 'rgba(206,182,132,.92)';
+  for (const l of st.leaves) {
+    ctx.save(); ctx.translate(l.x, l.y); ctx.rotate(l.p);
+    ctx.beginPath(); ctx.ellipse(0, 0, 6.5 * l.s * S, 2.6 * l.s * S, 0, 0, 6.3);
+    ctx.fill(); ctx.stroke(); ctx.restore();
+  }
+}
+/* 霧のかぶせ。うしろ用（濃い）とてまえ用（うすい）を分けて、奥ゆきを出す */
+function drawFog(strength) {
+  if (st.fog <= 0) return;
+  const a = st.fog * strength;
+  ctx.fillStyle = (st.dayP > .93 ? 'rgba(74,82,116,' : 'rgba(228,235,240,') + a + ')';
+  ctx.fillRect(0, 0, SW, SH);
 }
 /* かさ。棒人間のあとに描き、柄が手までつながって見えるようにする。
    頭が大きいので、柄は顔の横（目より外側）を通る位置に寄せてある */
@@ -948,7 +1245,7 @@ function doJump() {
   st.idle = 0;
   if (P.indoors || P.inWater || !P.onGround) return;
   P.vy = -JUMPV; P.onGround = false;
-  save.jumps++; st.jumpBurst++; st.burstT = 0;
+  save.jumps++; st.dJump++; st.jumpBurst++; st.burstT = 0;
   for (const j of LINES.jump) if (save.jumps === j[0]) { speak(j[1], 3); setExpr('think', 3); }
   if (save.jumps >= 100) unlock('jump100');
   if (save.jumps >= 1000) unlock('jump1000');
@@ -967,12 +1264,13 @@ function nearest() {
     { id: 'house', x: HOUSE_X, r: 66,
       label: st.rain > 0 && !st.umbrella ? 'かさをとる' : (st.dayP > .82 ? 'ねる' : 'ながめる') },
     { id: 'rock',  x: ROCK_X,  r: 62, label: 'おす' },
-    { id: 'sign',  x: SIGN_X,  r: 52, label: 'よむ' },
+    { id: 'sign',  x: SIGN_X,  r: 52, label: qIs('sign') ? 'おこす' : 'よむ' },
     { id: 'chest', x: CHEST_X, r: 52, label: save.chest ? 'また見る' : 'あける' },
     { id: 'hole',  x: HOLE_X,  r: 56, label: 'のぞく' },
     { id: 'cat',   x: cat.x,   r: 60, label: cat.awake ? 'なでる' : 'おこさない' },
-    { id: 'bird',  x: bird.x,  r: 56, label: 'はなしかける' },
+    { id: 'bird',  x: bird.x,  r: 56, label: qIs('bird') ? 'そっとしておく' : 'はなしかける' },
   ];
+  if (qIs('cat2')) cands.push({ id: 'cat2', x: CAT2_X, r: 58, label: 'おこさない' });
   let best = null, bd = 1e9;
   for (const c of cands) {
     const d = Math.abs(wdist(c.x, P.x));
@@ -986,27 +1284,52 @@ function doAction() {
   switch (curAct.id) {
     case 'house':
       if (st.rain > 0 && !st.umbrella) {
-        st.umbrella = true; speak('かさ、あった。', 2.6); setExpr('smile', 2.6);
+        st.umbrella = true; st.dUmb = true; speak('かさ、あった。', 2.6); setExpr('smile', 2.6);
       } else if (st.dayP > .82) goSleep();
-      else {
+      else if (qIs('flower') && !st.quirkNoticed) {
+        noticeQuirk();
+        speak('花が咲いている。いつから。', 3.2); setExpr('oh', 3);
+      } else {
         speak(pick(['ここが家。', 'まだ帰らない。', 'ちょっとそこまで、のつもりだった。']), 2.8);
         setExpr('content', 2.8);
       }
       break;
     case 'rock':
-      save.rockPush++; persistSoon(); setExpr('effort', 1.9);
-      speak(LINES.rock[Math.min(save.rockPush - 1, LINES.rock.length - 1)], 2.6);
+      save.rockPush++; st.dRock++; persistSoon();
+      if (qIs('snail') && !st.quirkNoticed) {
+        noticeQuirk();
+        speak('……カタツムリがいる。おせない。', 3.2); setExpr('oh', 3);
+      } else {
+        setExpr('effort', 1.9);
+        speak(LINES.rock[Math.min(save.rockPush - 1, LINES.rock.length - 1)], 2.6);
+      }
       if (save.rockPush >= 10) unlock('rock');
       break;
     case 'sign':
-      speak(LINES.sign[save.sign % LINES.sign.length], 3.2); setExpr('think', 3.2);
-      save.sign++; unlock('sign'); persistSoon();
+      save.sign++; st.dSign++; unlock('sign'); persistSoon();
+      if (qIs('sign')) {
+        noticeQuirk();
+        speak(pick(['倒れている。', '起こしても、また倒れる。', '（読めない）', 'きょうは、休みらしい。']), 3);
+        setExpr('blank', 3);
+      } else {
+        speak(LINES.sign[(save.sign - 1) % LINES.sign.length], 3.2); setExpr('think', 3.2);
+      }
       break;
     case 'chest':
       if (!save.chest) {
-        save.chest = true; persist(); speak('……からっぽ。', 3.2); unlock('chest');
+        save.chest = true; st.dChest = true; persist(); unlock('chest');
         setExpr('oh', 1.3);                                   // あけた瞬間は期待している
-        setTimeout(() => setExpr('blank', 2.4), 1300);        // 中身を見たあと
+        if (qIs('leaf')) {
+          noticeQuirk(); speak('……葉っぱが、1枚。', 3.2);
+          setTimeout(() => setExpr('wide', 2.4), 1300);
+        } else {
+          speak('……からっぽ。', 3.2);
+          setTimeout(() => setExpr('blank', 2.4), 1300);      // 中身を見たあと
+        }
+      } else if (qIs('leaf')) {
+        noticeQuirk();
+        speak(pick(['きょうは、葉っぱが1枚。', 'だれかが入れたのか。', '葉っぱ。それだけ。']), 2.8);
+        setExpr('wide', 2.8);
       } else {
         speak(pick(['やっぱり、からっぽ。', 'ていねいに閉じた。', 'ここは、そういう宝箱。']), 2.8);
         setExpr('blank', 2.8);
@@ -1025,12 +1348,64 @@ function doAction() {
         setExpr('content', 2.6);
       }
       break;
+    case 'cat2':
+      noticeQuirk();
+      speak(pick(['……2匹いる。', 'きょうは、もう1匹いる。', 'どこから来たのか。', 'よく寝ている。']), 2.8);
+      setExpr('wide', 2.8);
+      break;
     case 'bird':
+      if (qIs('bird')) {
+        noticeQuirk();
+        speak(pick(['……寝ている。', 'きょうは、静かだ。', 'そっとしておこう。']), 2.8);
+        setExpr('content', 2.8);
+        break;
+      }
       bird.following = true; bird.talkT = 0.2;
       speak(pick(['どうも。', 'こんにちは。', '……。']), 2.2);
       setExpr(save.birdTalks > 8 ? 'blank' : 'smile', 2.2);
       break;
   }
+}
+
+/* ---------- 日記 ----------
+   その日のかぞえから1行だけつくる。読み返すためだけのもの。 */
+const DIARY_TAIL = [
+  'とくに、何もなかった。', 'それだけ。', 'わるくない日だった。',
+  'また、あした。', 'そういう日。', '……。', 'まあ、いいか。'
+];
+const DIARY_EMPTY = [
+  'なにもしなかった。', 'ずっと、そこにいた。', 'ながめていたら、終わった。', '……。'
+];
+function makeDiary() {
+  // できごと（めずらしいほう）と、かぞえ（毎日あるほう）を分けて、3つまで拾う
+  const ev = [], cnt = [];
+  if (st.dWet) ev.push('川に落ちた');
+  if (st.dCat) ev.push('猫についていった');
+  if (st.dChest) ev.push('宝箱をあけた');
+  if (st.quirkNoticed) {
+    const q = QUIRKS.find(q2 => q2.id === save.quirk);
+    if (q) ev.push(q.n);
+  }
+  if (st.dUmb) ev.push('傘をさした');
+  else if (st.dRain) ev.push('雨に、ぬれた');
+  if (save.wx === 'snow' && st.snowT > 20) ev.push('雪がふっていた');
+  if (save.wx === 'fog' && st.fogT > 20) ev.push('霧で、なにも見えなかった');
+  if (save.wx === 'wind' && st.windT > 20) ev.push('風が、つよかった');
+
+  if (st.dJump > 0) cnt.push(st.dJump + '回とんだ');
+  if (st.dLap > 0) cnt.push(st.dLap + '周した');
+  if (st.dBird > 0) cnt.push('鳥の話を' + st.dBird + '回きいた');
+  if (st.dRock > 0) cnt.push('石を' + st.dRock + '回おした');
+  if (st.dSign > 0) cnt.push('看板を見た');
+
+  const bits = ev.slice(0, 2);
+  for (const c of cnt) { if (bits.length >= 3) break; bits.push(c); }
+  for (const e of ev.slice(2)) { if (bits.length >= 3) break; bits.push(e); }
+
+  const t = bits.length
+    ? bits.join('。') + '。' + pick(DIARY_TAIL)
+    : pick(DIARY_EMPTY);
+  return { d: save.day, w: wxOf(save.wx).n, t: t };
 }
 
 /* ---------- ねる → つぎの日 ---------- */
@@ -1040,18 +1415,33 @@ function goSleep() {
   sleeping = true; unlock('home');
   st.fadeDir = 1;
   speak('きょうも、なんとなく終わった。', 3.4);
+  // 日記は「その日」のうちに書く
+  save.diary.unshift(makeDiary());
+  if (save.diary.length > 120) save.diary.length = 120;
+  if (save.diary.length >= 10) unlock('diary10');
   setTimeout(() => {
     save.day++; st.dayTime = 0; st.nightFlag = false;
     st.umbrella = false; st.riverHinted = false;
     st.rain = 0; st.drops = []; st.rainNext = 150 + Math.random() * 150;
     cat.awake = false; cat.x = 1720; bird.following = false; bird.x = 2380; bird.sitting = true;
     P.x = HOUSE_X + 40; P.vx = 0; st.catFollow = 0;
-    persist();
+    rollNewDay();          // あたらしい天気と、あたらしいどうでもいいこと
     st.fadeDir = -1;
     speak(pick(['ちょっとそこまで。', 'きょうも、そとに出る。', 'あさだ。']), 3);
     setExpr('sleep', 2.2);   // 起きぬけ
     sleeping = false;
+    announceWeather(3400);
   }, 2200);
+}
+
+/* 朝、天気にひとこと（ふつうの日は、なにも言わない） */
+function announceWeather(delay) {
+  const w = wxOf(save.wx);
+  if (!w.line) return;
+  setTimeout(() => {
+    speak(w.line, 3);
+    setExpr(save.wx === 'fine' ? 'wide' : (save.wx === 'fog' ? 'think' : 'oh'), 2.8);
+  }, delay);
 }
 
 /* ---------- 更新 ---------- */
@@ -1084,7 +1474,7 @@ function update(dt) {
 
   // --- 移動 ---
   P.x += P.vx * dt;
-  if (P.x >= WORLD) { P.x -= WORLD; save.laps++; if (save.laps >= 20) unlock('lap20'); persistSoon(); }
+  if (P.x >= WORLD) { P.x -= WORLD; save.laps++; st.dLap++; if (save.laps >= 20) unlock('lap20'); persistSoon(); }
   if (P.x < 0) P.x += WORLD;
 
   // --- じゅうりょく ---
@@ -1097,7 +1487,7 @@ function update(dt) {
   const overRiver = Math.abs(wdist(P.x, RIVER_X)) < RIVER_W / 2 - 6;
   if (!save.bridge && overRiver && P.onGround && !P.inWater) {
     P.inWater = true; P.waterT = 0; P.vx = 0;
-    unlock('splash');
+    unlock('splash'); st.dWet = true;
     speak('ポチャン。', 1.8);
     for (let i = 0; i < 16; i++)
       st.splash.push({ x: 0, y: 0, vx: (Math.random() - .5) * 200, vy: -120 - Math.random() * 180, t: 1 });
@@ -1112,6 +1502,11 @@ function update(dt) {
   }
   if (!save.bridge && !P.inWater && P.onGround && Math.abs(wdist(P.x, RIVER_X)) < RIVER_W / 2 + 44) {
     if (!st.riverHinted) { st.riverHinted = true; speak('……渡れるかな。', 2.8); }
+  }
+  // きょうだけ水が多い日は、橋があってもなくても気づく
+  if (qIs('river') && !st.quirkNoticed && !P.inWater && P.onGround
+      && Math.abs(wdist(P.x, RIVER_X)) < RIVER_W / 2 + 52) {
+    noticeQuirk(); speak('きょうは、水が多い。', 2.8); setExpr('think', 2.6);
   }
 
   // --- たすけてくれる棒人間 ---
@@ -1150,12 +1545,14 @@ function update(dt) {
     cat.x += cat.vx * dt; cat.phase += dt * 7;
     if (cat.x >= WORLD) cat.x -= WORLD;
     const d = Math.abs(wdist(cat.x, P.x));
-    if (d < 110) { st.catFollow += dt; if (st.catFollow > 26) unlock('cat'); }
+    if (d < 110) { st.catFollow += dt; if (st.catFollow > 26) { unlock('cat'); st.dCat = true; } }
     else st.catFollow = Math.max(0, st.catFollow - dt * .6);
   }
 
   // --- 鳥 ---
-  if (!bird.following && Math.abs(wdist(bird.x, P.x)) < 150) {
+  // きょうだけ寝ている日は、ついてこないし、しゃべらない
+  if (qIs('bird')) { bird.following = false; bird.y *= 0.8; }
+  else if (!bird.following && Math.abs(wdist(bird.x, P.x)) < 150) {
     bird.following = true; bird.talkT = Math.min(bird.talkT, 1.5);
   }
   if (bird.following) {
@@ -1170,7 +1567,7 @@ function update(dt) {
     if (bird.talkT <= 0) {
       bird.talkT = 5 + Math.random() * 4;
       birdSpeak = { text: pick(LINES.bird), t: 2.6 };
-      save.birdTalks++; persistSoon();
+      save.birdTalks++; st.dBird++; persistSoon();
       // 何度も話しかけられると、だんだん無表情になる
       if (st.exprT <= 0) setExpr(save.birdTalks > 8 ? 'blank' : 'wide', 2.2);
       if (save.birdTalks >= 20) unlock('bird');
@@ -1183,6 +1580,15 @@ function update(dt) {
     st.holeStare += dt;
     if (st.holeStare > 180) unlock('hole3');
   } else st.holeStare = 0;
+
+  // --- 昼の月に気づく（立ちどまっていると、ふと見上げる） ---
+  if (qIs('moon') && !st.quirkNoticed && st.dayP > .18 && st.dayP < .62 && st.idle > 7) {
+    noticeQuirk(); speak('……昼なのに、月。', 3); setExpr('wide', 2.8);
+  }
+
+  // --- ゆっくりたまる実績 ---
+  if (save.day >= 30) unlock('day30');
+  if (save.totalPlay >= 3600) unlock('play1h');
 
   // --- なにもしない ---
   if (st.idle > 120) unlock('nothing');
@@ -1213,6 +1619,10 @@ function update(dt) {
   else if (st.idle > 60) { m = '😴'; note = 'うとうと'; }
   else if (st.idle > 20) { m = '😌'; note = 'おちついている'; }
   else if (st.rain > 0 && !st.umbrella) { m = '😐'; note = 'ぬれている'; }
+  else if (save.wx === 'fog' && st.fog > .55) { m = '😶'; note = 'なにも見えない'; }
+  else if (save.wx === 'snow') { m = '😌'; note = 'しずか'; }
+  else if (save.wx === 'wind') { m = '😑'; note = '風がつよい'; }
+  else if (save.wx === 'fine') { m = '😊'; note = 'まぶしい'; }
   else if (P.walking) { m = '🙂'; note = ''; }
   if (m !== st.mood || note !== st.moodNote) {
     st.mood = m; st.moodNote = note;
@@ -1224,6 +1634,7 @@ function update(dt) {
 
   // --- 雨 ---
   updateRain(dt);
+  updateSky(dt);
 
   // --- カメラ ---
   const target = P.x - SW * (0.5 - P.facing * 0.08);
@@ -1248,7 +1659,7 @@ function update(dt) {
 
   // --- ステータス ---
   const sub = document.getElementById('sub');
-  const txt = save.day + '日目　' + save.laps + '周　' + save.jumps + '回とんだ';
+  const txt = save.day + '日目・' + wxOf(save.wx).n + '　' + save.laps + '周　' + save.jumps + '回とんだ';
   if (sub.textContent !== txt) sub.textContent = txt;
 
   // --- 保存 ---
@@ -1263,6 +1674,7 @@ let birdSpeak = null;
 function render() {
   ctx.clearRect(0, 0, SW, SH);
   drawWorld();
+  drawFog(.52);          // 世界をうしろに押しやる、濃いほうの霧
 
   const px = sx(P.x), py = groundY + P.y;
 
@@ -1317,6 +1729,8 @@ function render() {
     ctx.globalAlpha = 1;
   }
 
+  drawFog(.30);          // てまえの、うすいほうの霧（本人まで少しかすむ）
+
   // 鳥のふきだし
   if (birdSpeak) drawBubble(sx(bird.x), groundY - bird.y - 34 * S, birdSpeak.text, Math.min(1, birdSpeak.t * 2));
   // 本人のふきだし
@@ -1328,6 +1742,8 @@ function render() {
   }
 
   drawRain();
+  drawSnow();
+  drawLeaves();
 
   if (st.fade > 0) {
     ctx.fillStyle = 'rgba(20,24,44,' + st.fade + ')';
@@ -1368,6 +1784,52 @@ document.getElementById('btnAch').addEventListener('click', () => {
 });
 document.getElementById('achClose').addEventListener('click', () => achPanel.classList.remove('on'));
 
+/* ---------- 日記パネル ---------- */
+const diPanel = document.getElementById('diPanel');
+document.getElementById('btnDi').addEventListener('click', () => {
+  const list = document.getElementById('diList');
+  list.innerHTML = '';
+  if (!save.diary.length) {
+    const d = document.createElement('div');
+    d.className = 'none';
+    d.textContent = 'まだ、なにも書いていない。\n夜、家で「ねる」と1行のこります。';
+    d.style.whiteSpace = 'pre-line';
+    list.appendChild(d);
+  } else {
+    for (const e of save.diary) {
+      const d = document.createElement('div');
+      d.className = 'di';
+      const hd = document.createElement('div');
+      hd.className = 'hd';
+      hd.textContent = e.d + '日目';
+      const wx = document.createElement('span');
+      wx.className = 'wx'; wx.textContent = '／' + (e.w || 'ふつう');
+      hd.appendChild(wx);
+      const tx = document.createElement('div');
+      tx.className = 'tx'; tx.textContent = e.t;
+      d.appendChild(hd); d.appendChild(tx);
+      list.appendChild(d);
+    }
+  }
+  document.getElementById('diLead').textContent =
+    save.diary.length + '日ぶん' +
+    (save.streak > 1 ? '　' + save.streak + '日つづけて外に出ている' : '');
+  diPanel.classList.add('on');
+});
+document.getElementById('diClose').addEventListener('click', () => diPanel.classList.remove('on'));
+
+/* ---------- 連続で外に出た日数（実際の日付でかぞえる） ---------- */
+function dateKey(d) { return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); }
+function touchStreak() {
+  const t = dateKey(new Date());
+  if (save.lastDate === t) return;
+  const y = new Date(); y.setDate(y.getDate() - 1);
+  save.streak = (save.lastDate === dateKey(y)) ? (save.streak || 0) + 1 : 1;
+  save.lastDate = t;
+  persist();
+  if (save.streak >= 7) unlock('streak7');
+}
+
 /* ---------- タイトル ---------- */
 (function titleArt() {
   const tc = document.getElementById('tcv'), tx = tc.getContext('2d');
@@ -1388,6 +1850,9 @@ document.getElementById('achClose').addEventListener('click', () => achPanel.cla
   frame();
 })();
 
+// はじめて起動したとき、または古いセーブを読んだときは、ここで1日ぶん引く
+if (!save.wx || !save.quirk) rollNewDay();
+
 document.getElementById('titleFoot').textContent =
   save.day > 1 ? save.day + '日目のつづきから' : 'はじめて外に出る';
 
@@ -1396,7 +1861,9 @@ document.getElementById('start').addEventListener('click', () => {
   st.started = true;
   last = performance.now();
   P.x = HOUSE_X + 60;
+  touchStreak();
   speak(save.day > 1 ? 'きょうも、ちょっとそこまで。' : 'ちょっとそこまで。', 3.4);
+  announceWeather(3800);
 });
 
 /* 保存（離脱時） */
