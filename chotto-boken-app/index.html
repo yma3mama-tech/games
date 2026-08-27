@@ -1,0 +1,1299 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#eaf4fa">
+<title>棒人間の、ちょっとだけ冒険</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    height: 100%; overflow: hidden; background: #e6eef3;
+    font-family: "Hiragino Maru Gothic ProN", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+    color: #22315c; user-select: none; -webkit-user-select: none;
+    overscroll-behavior: none; touch-action: none;
+  }
+  #wrap { position: fixed; inset: 0; }
+  canvas { display: block; width: 100%; height: 100%; }
+
+  /* ---- 上部ステータス ---- */
+  #top {
+    position: absolute; top: 0; left: 0; right: 0;
+    padding: calc(env(safe-area-inset-top) + 10px) 14px 0;
+    display: flex; align-items: flex-start; gap: 8px;
+    pointer-events: none;
+  }
+  .chip {
+    background: rgba(255,255,255,.72); border: 2px solid currentColor;
+    border-radius: 14px 16px 13px 15px; padding: 5px 11px;
+    font-size: 13px; font-weight: 700; letter-spacing: .02em;
+    line-height: 1.3; backdrop-filter: blur(2px);
+  }
+  #mood .em { font-size: 17px; vertical-align: -2px; }
+  #sub { font-size: 11px; opacity: .8; font-weight: 600; }
+  #topright { margin-left: auto; display: flex; gap: 6px; pointer-events: auto; }
+  .iconbtn {
+    width: 42px; height: 42px; border-radius: 15px 13px 16px 14px;
+    background: rgba(255,255,255,.72); border: 2px solid currentColor;
+    color: inherit; font-size: 17px; display: grid; place-items: center;
+    cursor: pointer; font-family: inherit;
+  }
+  .iconbtn:active { transform: scale(.94); }
+
+  /* ---- 下部そうさ ---- */
+  #pad {
+    position: absolute; left: 0; right: 0; bottom: 0;
+    padding: 0 16px calc(env(safe-area-inset-bottom) + 16px);
+    display: flex; align-items: flex-end; justify-content: space-between;
+    pointer-events: none;
+  }
+  #left, #right { display: flex; gap: 12px; align-items: flex-end; pointer-events: auto; }
+  #right { flex-direction: column; align-items: flex-end; }
+  .btn {
+    background: rgba(255,255,255,.78); border: 2.5px solid currentColor; color: inherit;
+    font-family: inherit; font-weight: 700; cursor: pointer;
+    display: grid; place-items: center; backdrop-filter: blur(2px);
+  }
+  .round { width: 66px; height: 66px; border-radius: 34px 31px 35px 32px; font-size: 26px; }
+  #jump { width: 84px; height: 66px; border-radius: 32px 35px 31px 34px; font-size: 16px; }
+  #act {
+    min-width: 84px; height: 46px; padding: 0 16px; font-size: 15px;
+    border-radius: 24px 26px 23px 25px;
+    opacity: 0; transform: translateY(6px); transition: opacity .18s, transform .18s;
+    pointer-events: none;
+  }
+  #act.on { opacity: 1; transform: translateY(0); pointer-events: auto; }
+  .btn:active { transform: scale(.94); }
+
+  /* ---- 実績トースト ---- */
+  #toast {
+    position: absolute; left: 50%; top: 22%; transform: translate(-50%, -8px);
+    background: rgba(255,255,255,.94); border: 2.5px solid #22315c; color: #22315c;
+    border-radius: 18px 20px 17px 19px; padding: 11px 18px; text-align: center;
+    opacity: 0; transition: opacity .35s, transform .35s; pointer-events: none;
+    max-width: 90%; min-width: 200px;
+  }
+  #toast.on { opacity: 1; transform: translate(-50%, 0); }
+  #toast .t { font-size: 10.5px; letter-spacing: .18em; opacity: .65; font-weight: 700; }
+  #toast .n { font-size: 15px; font-weight: 700; margin-top: 3px; }
+
+  /* ---- パネル ---- */
+  .panel {
+    position: absolute; inset: 0; background: rgba(233,241,246,.985); backdrop-filter: blur(3px);
+    display: none; flex-direction: column; z-index: 20;
+    padding: calc(env(safe-area-inset-top) + 18px) 18px calc(env(safe-area-inset-bottom) + 18px);
+  }
+  .panel.on { display: flex; }
+  .panel h2 { font-size: 18px; margin-bottom: 3px; }
+  .panel .lead { font-size: 12px; opacity: .7; margin-bottom: 14px; line-height: 1.6; }
+  #achList { overflow-y: auto; flex: 1; -webkit-overflow-scrolling: touch; }
+  .ach {
+    display: flex; gap: 10px; align-items: baseline;
+    border-bottom: 1.5px dashed rgba(34,49,92,.28); padding: 11px 2px;
+  }
+  .ach .mk { font-size: 15px; width: 20px; flex: none; }
+  .ach .nm { font-size: 14.5px; font-weight: 700; line-height: 1.45; }
+  .ach .hi { font-size: 11.5px; opacity: .6; margin-top: 2px; }
+  .ach.lock .nm { opacity: .38; font-weight: 600; }
+  .closebar { display: flex; justify-content: center; padding-top: 14px; }
+  .wide {
+    padding: 11px 30px; font-size: 15px; border-radius: 22px 24px 21px 23px;
+    background: rgba(255,255,255,.8); border: 2.5px solid currentColor; color: inherit;
+    font-family: inherit; font-weight: 700; cursor: pointer;
+  }
+
+  /* ---- タイトル ---- */
+  #title {
+    position: absolute; inset: 0; z-index: 30; background: #eef4f7;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 4px; text-align: center; padding: 24px;
+  }
+  #title.off { display: none; }
+  #title canvas { width: 150px; height: 150px; }
+  #title h1 { font-size: 21px; letter-spacing: .04em; line-height: 1.5; font-weight: 700; }
+  #title .sub2 { font-size: 12px; opacity: .65; margin-top: 6px; line-height: 1.8; }
+  #title button { margin-top: 26px; }
+  #title .foot { position: absolute; bottom: calc(env(safe-area-inset-bottom) + 18px); font-size: 11px; opacity: .5; }
+
+  /* ---- 夜モード（文字色反転） ---- */
+  body.night { color: #eef1fb; }
+  body.night .chip, body.night .btn, body.night .iconbtn { background: rgba(40,46,80,.62); }
+  body.night .panel { background: rgba(36,42,72,.985); }
+  body.night .ach { border-bottom-color: rgba(238,241,251,.25); }
+  body.night .wide { background: rgba(40,46,80,.7); }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <canvas id="cv"></canvas>
+
+  <div id="top">
+    <div>
+      <div class="chip" id="mood">きょうのきぶん：<span class="em">🙂</span></div>
+      <div class="chip" id="sub" style="margin-top:6px">1日目</div>
+    </div>
+    <div id="topright">
+      <button class="iconbtn" id="btnAch" aria-label="実績">🏆</button>
+    </div>
+  </div>
+
+  <div id="pad">
+    <div id="left">
+      <button class="btn round" id="bl" aria-label="ひだり">←</button>
+      <button class="btn round" id="br" aria-label="みぎ">→</button>
+    </div>
+    <div id="right">
+      <button class="btn" id="act"></button>
+      <button class="btn" id="jump">ジャンプ</button>
+    </div>
+  </div>
+
+  <div id="toast"><div class="t">じっせき かいほう</div><div class="n"></div></div>
+
+  <div class="panel" id="achPanel">
+    <h2>じっせき</h2>
+    <div class="lead" id="achLead"></div>
+    <div id="achList"></div>
+    <div class="closebar"><button class="wide" id="achClose">とじる</button></div>
+  </div>
+
+  <div id="title">
+    <canvas id="tcv" width="300" height="300"></canvas>
+    <h1>棒人間の、<br>ちょっとだけ冒険</h1>
+    <div class="sub2">敵はいません。ゲームオーバーもありません。<br>目的は、なんとなく毎日を過ごすことです。</div>
+    <button class="wide" id="start">そとに出る</button>
+    <div class="foot" id="titleFoot"></div>
+  </div>
+</div>
+
+<script>
+"use strict";
+/* =========================================================
+   棒人間の、ちょっとだけ冒険
+   - 世界はぐるっと一周してつながっている
+   - 敵なし・ゲームオーバーなし・急ぐ理由なし
+   ========================================================= */
+
+const cv = document.getElementById('cv');
+let ctx = cv.getContext('2d');
+const mainCtx = ctx;
+let SW = 0, SH = 0, DPR = 1, groundY = 0, S = 1;
+
+const WORLD = 3000;          // 世界一周のながさ
+const DAY_LEN = 600;         // 1日 = 600秒
+const WALK = 96;             // 歩くはやさ(px/s)
+const GRAV = 1500, JUMPV = 470;
+
+/* ---------- 保存 ---------- */
+const SAVE_KEY = 'bojin-adventure-v1';
+function loadSave() {
+  try { return JSON.parse(localStorage.getItem(SAVE_KEY) || '{}') || {}; }
+  catch (e) { return {}; }   // localStorage が使えない環境でも遊べるように
+}
+const save = Object.assign({
+  day: 1, jumps: 0, laps: 0, achs: [], bridge: false,
+  chest: false, sign: 0, birdTalks: 0, rockPush: 0, totalPlay: 0
+}, loadSave());
+const unlocked = new Set(save.achs);
+let saveTimer = 0;
+function persist() {
+  save.achs = [...unlocked];
+  try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) {}
+}
+
+/* ---------- 実績 ---------- */
+const ACHS = [
+  { id: 'home',     n: '帰ってきた',              h: '夜、家に入る' },
+  { id: 'sign',     n: '看板を読んだ',            h: '看板の前で' },
+  { id: 'rock',     n: '石は動かなかった',        h: '大きい石を10回おす' },
+  { id: 'splash',   n: '川に落ちた',              h: '川のところで' },
+  { id: 'bridge',   n: '最初から橋があった',      h: '川のむこうから、だれか来る' },
+  { id: 'chest',    n: 'なにも入っていなかった',  h: '宝箱をあける' },
+  { id: 'cat',      n: '猫についていった',        h: '猫が歩きだしたら、そのまま' },
+  { id: 'bird',     n: '鳥の話を20回きいた',      h: '鳥は、よく話す' },
+  { id: 'hole3',    n: '穴を3分見つめた',        h: '穴の前で、じっと' },
+  { id: 'jump100',  n: 'そんなに跳ぶ？',          h: '100回とぶ' },
+  { id: 'jump1000', n: '……。',                   h: '1000回とぶ' },
+  { id: 'lap20',    n: '同じ場所を20周した',      h: 'ぐるぐるする' },
+  { id: 'rain',     n: '雨なのに傘を探さなかった', h: '雨の日、そのまま外にいる' },
+  { id: 'nothing',  n: '何もしなかった',          h: '2分ほど、何もしない' },
+  { id: 'dayend',   n: 'なぜか一日が終わった',    h: '夜になる' },
+  { id: 'sleep',    n: 'ゲームを起動したまま寝た', h: '……30分' },
+];
+
+/* ---------- 状態 ---------- */
+const P = {
+  x: 190, y: 0, vx: 0, vy: 0, onGround: true, facing: 1,
+  walking: false, phase: 0, inWater: false, waterT: 0, indoors: false
+};
+const st = {
+  time: 0, dayTime: 0, idle: 0, started: false,
+  mood: '🙂', moodNote: '', jumpBurst: 0, burstT: 0,
+  rain: 0, rainNext: 150, umbrella: false, rainSeen: 0,
+  holeStare: 0, catFollow: 0, lastIdleLine: 0, fade: 0, fadeDir: 0,
+  helper: null, splash: [], drops: [], nightFlag: false
+};
+const cat  = { x: 1720, awake: false, vx: 0, phase: 0 };
+const bird = { x: 2380, y: 0, following: false, hop: 0, talkT: 4, sitting: true };
+
+/* ---------- 乱数（手描きのゆらぎ） ---------- */
+const RT = new Float32Array(4096);
+for (let i = 0; i < 4096; i++) RT[i] = Math.random();
+let seedFrame = 0, jc = 0;
+function jit(a) { jc = (jc + 1) & 4095; return (RT[(jc + seedFrame) & 4095] - 0.5) * a; }
+function fixed(i) { return RT[i & 4095]; }
+
+/* ---------- 手描き描画ヘルパ ---------- */
+function smoothClosed(pts) {
+  const n = pts.length;
+  ctx.beginPath();
+  ctx.moveTo((pts[n - 1][0] + pts[0][0]) / 2, (pts[n - 1][1] + pts[0][1]) / 2);
+  for (let i = 0; i < n; i++) {
+    const p = pts[i], q = pts[(i + 1) % n];
+    ctx.quadraticCurveTo(p[0], p[1], (p[0] + q[0]) / 2, (p[1] + q[1]) / 2);
+  }
+  ctx.closePath();
+}
+function blob(cx, cy, rx, ry, amp, n) {
+  n = n || 10;
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const a = i / n * Math.PI * 2;
+    pts.push([cx + Math.cos(a) * (rx + jit(amp)), cy + Math.sin(a) * (ry + jit(amp))]);
+  }
+  smoothClosed(pts);
+}
+function wline(x1, y1, x2, y2, amp) {
+  amp = amp === undefined ? 1.6 : amp;
+  ctx.beginPath(); ctx.moveTo(x1, y1);
+  ctx.quadraticCurveTo((x1 + x2) / 2 + jit(amp), (y1 + y2) / 2 + jit(amp), x2, y2);
+  ctx.stroke();
+}
+function tear(x, y, rx, ry, rot) {  // 雫型の手足
+  ctx.save(); ctx.translate(x, y); ctx.rotate(rot);
+  blob(0, 0, rx, ry, .7, 8);
+  ctx.restore();
+}
+function wrect(x, y, w, h, r) {
+  const pts = [];
+  const c = [[x + r, y], [x + w - r, y], [x + w, y + r], [x + w, y + h - r],
+             [x + w - r, y + h], [x + r, y + h], [x, y + h - r], [x, y + r]];
+  for (const p of c) pts.push([p[0] + jit(1.2), p[1] + jit(1.2)]);
+  smoothClosed(pts);
+}
+
+/* ---------- 色（時間帯） ---------- */
+const STOPS = [
+  { p: 0.00, sky1: '#ffdcbb', sky2: '#f6f0e4', gr: '#efe6cd', ink: '#22315c', hill: '#dde9dc' },
+  { p: 0.16, sky1: '#c2e5f7', sky2: '#eef7fb', gr: '#ede6d0', ink: '#22315c', hill: '#d6e6d8' },
+  { p: 0.55, sky1: '#a8daf3', sky2: '#f1f8f4', gr: '#ebe3ca', ink: '#22315c', hill: '#cfe1d2' },
+  { p: 0.74, sky1: '#f7bd8b', sky2: '#f9dfc6', gr: '#e0cbaa', ink: '#2a2b4a', hill: '#c8b69d' },
+  { p: 0.86, sky1: '#7a72a0', sky2: '#d3a49c', gr: '#a09098', ink: '#2b2b46', hill: '#8b8296' },
+  { p: 0.92, sky1: '#48496f', sky2: '#7d6e84', gr: '#6b6880', ink: '#2b2b46', hill: '#5b5a78' },
+  { p: 0.96, sky1: '#333a62', sky2: '#4e4f77', gr: '#54587a', ink: '#eef1fb', hill: '#434969' },
+  { p: 1.00, sky1: '#2a3157', sky2: '#454a76', gr: '#4a4f6e', ink: '#eef1fb', hill: '#3b4166' },
+];
+function hex2rgb(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
+function mix(a, b, t) {
+  const A = hex2rgb(a), B = hex2rgb(b);
+  return 'rgb(' + Math.round(A[0] + (B[0] - A[0]) * t) + ',' + Math.round(A[1] + (B[1] - A[1]) * t) + ',' + Math.round(A[2] + (B[2] - A[2]) * t) + ')';
+}
+let PAL = {};
+function palette(p) {
+  let i = 0;
+  while (i < STOPS.length - 2 && p > STOPS[i + 1].p) i++;
+  const a = STOPS[i], b = STOPS[i + 1];
+  const t = Math.max(0, Math.min(1, (p - a.p) / (b.p - a.p)));
+  return { sky1: mix(a.sky1, b.sky1, t), sky2: mix(a.sky2, b.sky2, t),
+           gr: mix(a.gr, b.gr, t), ink: mix(a.ink, b.ink, t), hill: mix(a.hill, b.hill, t) };
+}
+
+/* ---------- 画面サイズ ---------- */
+function resize() {
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  SW = wrap.clientWidth; SH = wrap.clientHeight;
+  cv.width = Math.round(SW * DPR); cv.height = Math.round(SH * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  groundY = Math.round(SH * 0.70);
+  S = Math.max(0.72, Math.min(1.3, SH / 760));
+}
+const wrap = document.getElementById('wrap');
+addEventListener('resize', resize);
+resize();
+
+/* ---------- ワールド座標 → 画面座標 ---------- */
+let camX = 0;
+function sx(wx) {
+  let d = wx - camX;
+  d = ((d % WORLD) + WORLD) % WORLD;
+  if (d > WORLD / 2) d -= WORLD;
+  return d;
+}
+function wdist(a, b) {
+  let d = a - b;
+  d = ((d % WORLD) + WORLD) % WORLD;
+  if (d > WORLD / 2) d -= WORLD;
+  return d;
+}
+
+/* ---------- 棒人間 ---------- */
+function drawPerson(x, y, o) {
+  o = o || {};
+  const sc = (o.scale || 1) * S, f = o.facing || 1;
+  const walking = o.walking ? 1 : 0, ph = o.phase || 0, jumping = o.jumping;
+  ctx.save();
+  ctx.translate(x, y); ctx.scale(sc, sc);
+  ctx.lineWidth = 3.2; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.strokeStyle = o.ink || PAL.ink;
+  ctx.fillStyle = o.body || PAL.paper || 'rgba(255,255,255,.88)';
+
+  const bob = jumping ? -3 : -Math.abs(Math.sin(ph * 2)) * 1.8 * walking;
+  const yb = bob;
+
+  // ---- あし ----
+  const swing = Math.sin(ph) * 11 * walking;
+  const legs = jumping ? [[-9, -6, .9], [10, 3, -.5]] : [[swing, 0, swing * .04], [-swing, 0, -swing * .04]];
+  for (const L of legs) {
+    const hx = (L === legs[0] ? -5 : 5), hy = -21 + yb;
+    const fx = hx + L[0], fy = -1 + L[1];
+    ctx.strokeStyle = o.ink || PAL.ink;
+    wline(hx, hy, fx, fy, 1.2);
+    ctx.fillStyle = 'rgba(0,0,0,0)';
+    tear(fx + f * 3, fy + 1, 6.5, 3.2, f > 0 ? .06 : -.06);
+    ctx.stroke();
+  }
+
+  // ---- からだ ----
+  ctx.fillStyle = o.body || 'rgba(255,255,255,.9)';
+  const bt = -53 + yb, bb = -20 + yb;
+  smoothClosed([
+    [-10 + jit(1), bt + jit(1)], [0 + jit(1), bt - 1 + jit(1)], [10 + jit(1), bt + jit(1)],
+    [13 + jit(1), (bt + bb) / 2 + jit(1)], [15 + jit(1), bb + jit(1)],
+    [0 + jit(1), bb + 2 + jit(1)], [-15 + jit(1), bb + jit(1)], [-13 + jit(1), (bt + bb) / 2 + jit(1)],
+  ]);
+  ctx.fill(); ctx.stroke();
+
+  // ---- うで ----
+  const aSwing = jumping ? 0 : -Math.sin(ph) * 6 * walking;
+  for (const side of [-1, 1]) {
+    const shx = side * 9, shy = -48 + yb;
+    const hyy = jumping ? -58 + yb : -25 + yb + (side === 1 ? aSwing : -aSwing) * .35;
+    const hx2 = jumping ? side * 26 : side * 20 + (side === 1 ? aSwing : -aSwing) * .5;
+    wline(shx, shy, hx2, hyy, 1.2);
+    ctx.fillStyle = 'rgba(0,0,0,0)';
+    tear(hx2, hyy + 3, 3.2, 5.2, side * .32);
+    ctx.stroke();
+  }
+
+  // ---- あたま ----
+  const hy = -75 + yb;
+  ctx.fillStyle = o.body || 'rgba(255,255,255,.92)';
+  blob(0, hy, 25, 22, 1.1, 12);
+  ctx.fill(); ctx.stroke();
+
+  // ---- かお ----
+  const ink = o.ink || PAL.ink;
+  ctx.fillStyle = ink; ctx.strokeStyle = ink;
+  const ex = f * 2;
+  const eye = (dx, dy, r) => { ctx.beginPath(); ctx.ellipse(dx, dy, r, r * 1.15, 0, 0, 6.3); ctx.fill(); };
+  const ex2 = o.expr || 'nose';
+  if (ex2 === 'sleep') {
+    ctx.lineWidth = 2.6;
+    ctx.beginPath(); ctx.arc(-8 + ex, hy - 3, 4.5, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.arc(8 + ex, hy - 3, 4.5, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+  } else {
+    eye(-8 + ex, hy - 5, 2.4); eye(8 + ex, hy - 5, 2.4);
+  }
+  if (ex2 === 'smile') {
+    ctx.lineWidth = 2.6;
+    ctx.beginPath(); ctx.arc(0 + ex, hy + 3, 6, 0.16 * Math.PI, 0.84 * Math.PI); ctx.stroke();
+  } else if (ex2 === 'oh') {
+    ctx.beginPath(); ctx.ellipse(1 + ex, hy + 5, 4.5, 5.5, 0, 0, 6.3); ctx.fill();
+  } else if (ex2 !== 'sleep') {
+    ctx.beginPath(); ctx.ellipse(f * 3, hy + 4, 3.2, 4.2, 0, 0, 6.3); ctx.fill();
+  } else {
+    ctx.beginPath(); ctx.ellipse(f * 3, hy + 5, 2.6, 3.4, 0, 0, 6.3); ctx.fill();
+  }
+  ctx.restore();
+}
+
+/* ---------- ふきだし ---------- */
+let bubble = null;   // {text, t, life, who}
+function speak(text, life) {
+  bubble = { text: text, t: 0, life: life || 2.8 };
+}
+function drawBubble(px, py, text, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.font = '600 ' + Math.round(14 * S) + 'px ' + getComputedStyle(document.body).fontFamily;
+  ctx.textBaseline = 'middle';
+  const maxW = Math.min(SW - 40, 230 * S);
+  const lines = []; let cur = '';
+  for (const ch of text) {
+    if (ch === '\n') { lines.push(cur); cur = ''; continue; }
+    if (ctx.measureText(cur + ch).width > maxW) { lines.push(cur); cur = ch; }
+    else cur += ch;
+  }
+  lines.push(cur);
+  let w = 0; for (const l of lines) w = Math.max(w, ctx.measureText(l).width);
+  const lh = 20 * S, padx = 13 * S, pady = 10 * S;
+  const bw = w + padx * 2, bh = lines.length * lh + pady * 2 - 4 * S;
+  let bx = px - bw / 2;
+  bx = Math.max(10, Math.min(SW - bw - 10, bx));
+  const by = py - bh;
+  ctx.lineWidth = 2.6; ctx.strokeStyle = PAL.ink;
+  ctx.fillStyle = PAL.bubble;
+  wrect(bx, by, bw, bh, 12 * S); ctx.fill(); ctx.stroke();
+  // しっぽ
+  ctx.beginPath();
+  ctx.moveTo(px - 6 * S, by + bh - 1);
+  ctx.quadraticCurveTo(px, by + bh + 11 * S, px + 6 * S, by + bh - 1);
+  ctx.fillStyle = PAL.bubble; ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(px - 6 * S, by + bh - 1);
+  ctx.quadraticCurveTo(px, by + bh + 11 * S, px + 6 * S, by + bh - 1);
+  ctx.stroke();
+  ctx.fillStyle = PAL.ink; ctx.textAlign = 'center';
+  lines.forEach((l, i) => ctx.fillText(l, bx + bw / 2, by + pady + lh * i + lh / 2 - 2 * S));
+  ctx.restore();
+}
+
+/* ---------- 風景パーツ ---------- */
+function drawHouse(x) {
+  const g = groundY, s = S;
+  ctx.lineWidth = 3.2; ctx.strokeStyle = PAL.ink; ctx.fillStyle = PAL.bubble;
+  const w = 104 * s, h = 72 * s;
+  wrect(x - w / 2, g - h, w, h, 4); ctx.fill(); ctx.stroke();
+  // やね
+  ctx.beginPath();
+  ctx.moveTo(x - w / 2 - 12 * s + jit(1), g - h + 2 * s + jit(1));
+  ctx.lineTo(x - 2 * s + jit(1.5), g - h - 40 * s + jit(1.5));
+  ctx.lineTo(x + w / 2 + 12 * s + jit(1), g - h + 2 * s + jit(1));
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  // ドア（夜はあかりがつく）
+  const lit = st.dayP > .78;
+  ctx.fillStyle = lit ? PAL.warm : PAL.bubble;
+  wrect(x - 32 * s, g - 42 * s, 30 * s, 42 * s, 13 * s); ctx.fill(); ctx.stroke();
+  // まど
+  ctx.fillStyle = lit ? PAL.warm : PAL.bubble;
+  wrect(x + 8 * s, g - 50 * s, 30 * s, 26 * s, 5 * s); ctx.fill(); ctx.stroke();
+  ctx.lineWidth = 2.2;
+  wline(x + 23 * s, g - 50 * s, x + 23 * s, g - 24 * s, .8);
+}
+function drawRock(x) {
+  const g = groundY, s = S;
+  ctx.lineWidth = 3.2; ctx.strokeStyle = PAL.ink; ctx.fillStyle = PAL.bubble;
+  const pts = [];
+  const n = 9;
+  for (let i = 0; i < n; i++) {
+    const a = Math.PI + i / (n - 1) * Math.PI;
+    const rr = 1 + fixed(i * 7) * .22;
+    pts.push([x + Math.cos(a) * 52 * s * rr + jit(1.4), g + Math.sin(a) * 46 * s * rr + jit(1.4)]);
+  }
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], g);
+  for (let i = 0; i < n - 1; i++) {
+    const p = pts[i], q = pts[i + 1];
+    ctx.quadraticCurveTo(p[0], p[1], (p[0] + q[0]) / 2, (p[1] + q[1]) / 2);
+  }
+  ctx.lineTo(pts[n - 1][0], g);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.lineWidth = 2;
+  wline(x - 14 * s, g - 30 * s, x - 2 * s, g - 12 * s, 1.4);
+}
+function drawSign(x) {
+  const g = groundY, s = S;
+  ctx.lineWidth = 3.2; ctx.strokeStyle = PAL.ink; ctx.fillStyle = PAL.bubble;
+  wline(x, g, x, g - 52 * s, 1);
+  wrect(x - 30 * s, g - 84 * s, 60 * s, 36 * s, 4); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = PAL.ink; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = '700 ' + Math.round(20 * s) + 'px sans-serif';
+  ctx.fillText('？', x, g - 65 * s);
+}
+function drawChest(x) {
+  const g = groundY, s = S;
+  ctx.lineWidth = 3.2; ctx.strokeStyle = PAL.ink; ctx.fillStyle = PAL.bubble;
+  wrect(x - 28 * s, g - 34 * s, 56 * s, 34 * s, 4); ctx.fill(); ctx.stroke();
+  ctx.lineWidth = 2.2;
+  wline(x - 28 * s, g - 20 * s, x + 28 * s, g - 20 * s, .8);   // 帯
+  ctx.lineWidth = 3.2;
+  ctx.save();
+  ctx.translate(x - 28 * s, g - 34 * s);
+  if (save.chest) ctx.rotate(-1.2);
+  ctx.beginPath();
+  ctx.moveTo(0 + jit(1), 0 + jit(1));
+  ctx.quadraticCurveTo(28 * s, -22 * s, 56 * s + jit(1), 0 + jit(1));
+  ctx.lineTo(56 * s, 2 * s); ctx.lineTo(0, 2 * s); ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = PAL.ink;
+  ctx.beginPath(); ctx.ellipse(x, g - 14 * s, 2.6 * s, 3.2 * s, 0, 0, 6.3); ctx.fill();
+}
+function drawTree(x, k) {
+  const g = groundY, s = S;
+  ctx.lineWidth = 3; ctx.strokeStyle = PAL.ink; ctx.fillStyle = PAL.bubble;
+  const h = (60 + fixed(k * 13) * 26) * s;
+  wline(x, g, x + jit(1), g - h, 1);
+  blob(x, g - h - 22 * s, (28 + fixed(k * 3) * 8) * s, 24 * s, 2.4, 11);
+  ctx.fill(); ctx.stroke();
+}
+function drawGrass(x, k) {
+  const g = groundY, s = S;
+  ctx.lineWidth = 2; ctx.strokeStyle = PAL.ink; ctx.globalAlpha = .55;
+  const n = fixed(k * 5) > .5 ? 2 : 1;
+  for (let i = 0; i < n; i++) {
+    const dx = (i - .5) * 6 * s, dir = i ? 1 : -1;
+    const h = (7 + fixed(k * 11 + i) * 4) * s;
+    ctx.beginPath(); ctx.moveTo(x + dx, g);
+    ctx.quadraticCurveTo(x + dx + dir * 2 * s, g - h, x + dx + dir * 5 * s, g - h - 2 * s);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+function drawCat() {
+  const x = sx(cat.x), g = groundY, s = S;
+  if (x < -120 || x > SW + 120) return;
+  ctx.lineWidth = 3; ctx.strokeStyle = PAL.ink; ctx.fillStyle = PAL.bubble;
+  if (!cat.awake) {
+    blob(x, g - 12 * s, 30 * s, 12 * s, 1.4, 10); ctx.fill(); ctx.stroke();     // からだ
+    blob(x - 30 * s, g - 17 * s, 14 * s, 12 * s, 1.2, 9); ctx.fill(); ctx.stroke(); // あたま
+    ctx.lineWidth = 2.4;
+    ctx.beginPath(); ctx.arc(-0 + x - 34 * s, g - 19 * s, 3.4 * s, .1 * Math.PI, .9 * Math.PI); ctx.stroke();
+    ctx.beginPath(); ctx.arc(-0 + x - 25 * s, g - 19 * s, 3.4 * s, .1 * Math.PI, .9 * Math.PI); ctx.stroke();
+    // みみ
+    ctx.lineWidth = 3;
+    wline(x - 38 * s, g - 25 * s, x - 34 * s, g - 32 * s, .6); wline(x - 34 * s, g - 32 * s, x - 30 * s, g - 25 * s, .6);
+    wline(x - 26 * s, g - 26 * s, x - 22 * s, g - 32 * s, .6); wline(x - 22 * s, g - 32 * s, x - 19 * s, g - 26 * s, .6);
+    // しっぽ
+    ctx.beginPath(); ctx.moveTo(x + 28 * s, g - 12 * s);
+    ctx.quadraticCurveTo(x + 48 * s, g - 16 * s, x + 42 * s, g - 30 * s); ctx.stroke();
+    // Zzz
+    ctx.fillStyle = PAL.ink; ctx.textAlign = 'left';
+    ctx.font = '700 ' + Math.round(13 * s) + 'px sans-serif';
+    const zz = Math.sin(st.time * 1.3) * 3 * s;
+    ctx.fillText('z', x + 16 * s, g - 34 * s + zz);
+    ctx.fillText('z', x + 26 * s, g - 46 * s + zz * .6);
+  } else {
+    const f = cat.vx >= 0 ? 1 : -1;
+    ctx.save(); ctx.translate(x, 0); ctx.scale(f, 1);
+    blob(0, g - 20 * s, 24 * s, 13 * s, 1.4, 10); ctx.fill(); ctx.stroke();
+    blob(22 * s, g - 28 * s, 13 * s, 12 * s, 1.2, 9); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = PAL.ink;
+    ctx.beginPath(); ctx.ellipse(20 * s, g - 30 * s, 1.9 * s, 2.2 * s, 0, 0, 6.3); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(28 * s, g - 30 * s, 1.9 * s, 2.2 * s, 0, 0, 6.3); ctx.fill();
+    ctx.fillStyle = PAL.bubble;
+    wline(16 * s, g - 36 * s, 20 * s, g - 43 * s, .6); wline(20 * s, g - 43 * s, 24 * s, g - 36 * s, .6);
+    wline(28 * s, g - 36 * s, 31 * s, g - 43 * s, .6); wline(31 * s, g - 43 * s, 34 * s, g - 36 * s, .6);
+    const lp = Math.sin(cat.phase) * 5 * s;
+    wline(-12 * s, g - 10 * s, -12 * s + lp, g, 1); wline(10 * s, g - 10 * s, 10 * s - lp, g, 1);
+    ctx.beginPath(); ctx.moveTo(-22 * s, g - 22 * s);
+    ctx.quadraticCurveTo(-38 * s, g - 26 * s, -34 * s, g - 40 * s); ctx.stroke();
+    ctx.restore();
+  }
+}
+function drawBird() {
+  const x = sx(bird.x), s = S;
+  if (x < -100 || x > SW + 100) return;
+  const y = groundY - bird.y;
+  ctx.lineWidth = 2.8; ctx.strokeStyle = PAL.ink; ctx.fillStyle = PAL.bubble;
+  const f = 1;
+  blob(x, y - 13 * s, 14 * s, 12 * s, 1.2, 9); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = PAL.ink;
+  ctx.beginPath(); ctx.ellipse(x + 5 * s, y - 17 * s, 1.9 * s, 2.2 * s, 0, 0, 6.3); ctx.fill();
+  ctx.beginPath();  // くちばし
+  ctx.moveTo(x + 13 * s, y - 16 * s); ctx.lineTo(x + 22 * s, y - 14 * s); ctx.lineTo(x + 13 * s, y - 11 * s);
+  ctx.closePath(); ctx.fill();
+  ctx.strokeStyle = PAL.ink; ctx.lineWidth = 2.2;
+  wline(x - 3 * s, y - 2 * s, x - 3 * s, y, .5); wline(x + 4 * s, y - 2 * s, x + 4 * s, y, .5);
+  // つばさ
+  ctx.lineWidth = 2.4; ctx.fillStyle = 'rgba(0,0,0,0)';
+  ctx.beginPath(); ctx.moveTo(x - 4 * s, y - 17 * s);
+  ctx.quadraticCurveTo(x - 12 * s, y - 12 * s, x - 3 * s, y - 8 * s); ctx.stroke();
+}
+
+/* ---------- せかい ---------- */
+const RIVER_X = 1250, RIVER_W = 118;
+const HOLE_X = 2760, HOLE_W = 74;
+const HOUSE_X = 190, ROCK_X = 560, SIGN_X = 900, CHEST_X = 1950;
+
+function drawWorld() {
+  // ---- そら ----
+  const g = ctx.createLinearGradient(0, 0, 0, groundY + 40);
+  g.addColorStop(0, PAL.sky1); g.addColorStop(1, PAL.sky2);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, SW, groundY + 40);
+
+  // ---- ほし ----
+  const na = Math.max(0, (st.dayP - 0.8) / 0.18);
+  if (na > 0.02) {
+    ctx.fillStyle = 'rgba(255,255,255,' + Math.min(1, na) * .9 + ')';
+    for (let i = 0; i < 40; i++) {
+      const px = (fixed(i * 31) * WORLD - camX * .04);
+      const X = ((px % SW) + SW) % SW;
+      const Y = fixed(i * 17) * groundY * .6 + 10;
+      const tw = .6 + Math.sin(st.time * 1.4 + i) * .4;
+      ctx.globalAlpha = Math.min(1, na) * tw;
+      ctx.fillRect(X, Y, 2, 2);
+    }
+    ctx.globalAlpha = 1;
+    // つき
+    const mx = ((SW * .78 - camX * .02) % SW + SW) % SW;
+    ctx.fillStyle = 'rgba(255,252,235,' + Math.min(1, na) + ')';
+    ctx.beginPath(); ctx.arc(mx, groundY * .22, 17 * S, 0, 6.3); ctx.fill();
+  }
+
+  // ---- くも ----
+  ctx.fillStyle = 'rgba(255,255,255,' + (0.72 - na * .5) + ')';
+  for (let i = 0; i < 7; i++) {
+    const wx = fixed(i * 53) * WORLD;
+    let d = ((wx - camX * .18) % WORLD + WORLD) % WORLD;
+    if (d > WORLD / 2) d -= WORLD;
+    const X = d * (SW / (WORLD * .25)) % (SW + 300) - 100;
+    const Y = 40 + fixed(i * 91) * groundY * .34;
+    const cs = (0.7 + fixed(i * 7) * .7) * S;
+    blob(X, Y, 42 * cs, 17 * cs, 3, 11); ctx.fill();
+  }
+
+  // ---- とおい丘 ----
+  ctx.fillStyle = PAL.hill;
+  ctx.beginPath(); ctx.moveTo(-20, groundY + 6);
+  for (let i = 0; i <= 12; i++) {
+    const X = -20 + i * (SW + 40) / 12;
+    const off = ((camX * .3) / 90 + i);
+    const Y = groundY - 26 * S - Math.sin(off * .8) * 26 * S - Math.sin(off * 1.9) * 10 * S;
+    ctx.lineTo(X, Y);
+  }
+  ctx.lineTo(SW + 20, groundY + 6); ctx.closePath(); ctx.fill();
+
+  // ---- じめん ----
+  ctx.fillStyle = PAL.gr;
+  ctx.fillRect(0, groundY, SW, SH - groundY);
+  // 地面のかすかな点々
+  ctx.fillStyle = PAL.ink; ctx.globalAlpha = .1;
+  for (let i = 0; i < 60; i++) {
+    const X = sx(fixed(i * 29 + 3) * WORLD);
+    if (X < -6 || X > SW + 6) continue;
+    ctx.fillRect(X, groundY + 8 + fixed(i * 13) * (SH - groundY - 14), 3.5, 2);
+  }
+  ctx.globalAlpha = 1;
+
+  // ---- 川 ----
+  const rx = sx(RIVER_X), rw = RIVER_W * S;
+  const rdep = 82 * S;
+  if (rx > -rw && rx < SW + rw) {
+    ctx.fillStyle = PAL.water;
+    ctx.fillRect(rx - rw / 2, groundY - 2, rw, rdep);
+    ctx.fillStyle = PAL.gr;
+    ctx.fillRect(rx - rw / 2, groundY - 2 + rdep, rw, SH);
+    ctx.strokeStyle = PAL.ink; ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(rx - rw / 2, groundY + rdep - 2 + jit(2));
+    ctx.quadraticCurveTo(rx, groundY + rdep + 6 * S, rx + rw / 2, groundY + rdep - 2 + jit(2));
+    ctx.stroke();
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i++) {
+      const wy = groundY + 16 * S + i * 17 * S;
+      const ph = st.time * .8 + i;
+      ctx.beginPath();
+      ctx.moveTo(rx - rw / 2 + 8 * S, wy);
+      ctx.quadraticCurveTo(rx + Math.sin(ph) * 10 * S, wy + 5 * S, rx + rw / 2 - 8 * S, wy);
+      ctx.stroke();
+    }
+    if (save.bridge) {
+      ctx.fillStyle = PAL.bubble; ctx.lineWidth = 3.2; ctx.strokeStyle = PAL.ink;
+      wrect(rx - rw / 2 - 8 * S, groundY - 7 * S, rw + 16 * S, 8 * S, 3); ctx.fill(); ctx.stroke();
+      for (let i = 0; i < 4; i++) {
+        const bx2 = rx - rw / 2 + rw * (i + .5) / 4;
+        ctx.lineWidth = 2.4; wline(bx2, groundY + 1 * S, bx2, groundY + 13 * S, 1);
+      }
+    }
+  }
+
+  // ---- じめんの線（川のところは切る） ----
+  ctx.strokeStyle = PAL.ink; ctx.lineWidth = 3.2;
+  const gapA = rx - rw / 2, gapB = rx + rw / 2;
+  let seg = [[-10, SW + 10]];
+  if (gapB > -10 && gapA < SW + 10) seg = [[-10, gapA], [gapB, SW + 10]];
+  for (const sgm of seg) {
+    if (sgm[1] - sgm[0] < 4) continue;
+    ctx.beginPath(); ctx.moveTo(sgm[0], groundY);
+    const n = Math.max(2, Math.round((sgm[1] - sgm[0]) / 46));
+    for (let i = 1; i <= n; i++) {
+      const X = sgm[0] + (sgm[1] - sgm[0]) * i / n;
+      const pX = sgm[0] + (sgm[1] - sgm[0]) * (i - .5) / n;
+      ctx.quadraticCurveTo(pX, groundY + jit(2.4), X, groundY + jit(1.2));
+    }
+    ctx.stroke();
+  }
+
+  // ---- あな ----
+  const hx = sx(HOLE_X);
+  if (hx > -100 && hx < SW + 100) {
+    ctx.fillStyle = PAL.hole;
+    blob(hx, groundY + 3 * S, HOLE_W / 2 * S, 11 * S, 1.4, 12); ctx.fill();
+    ctx.strokeStyle = PAL.ink; ctx.lineWidth = 3; ctx.stroke();
+  }
+
+  // ---- 木と草 ----
+  for (let i = 0; i < 16; i++) {
+    const wx = 60 + fixed(i * 41) * WORLD;
+    if (Math.abs(wdist(wx, RIVER_X)) < 120 || Math.abs(wdist(wx, HOUSE_X)) < 110) continue;
+    const X = sx(wx);
+    if (X > -80 && X < SW + 80) drawTree(X, i);
+  }
+  for (let i = 0; i < 46; i++) {
+    const wx = fixed(i * 23 + 5) * WORLD;
+    if (Math.abs(wdist(wx, RIVER_X)) < 80) continue;
+    const X = sx(wx);
+    if (X > -30 && X < SW + 30) drawGrass(X, i);
+  }
+
+  // ---- もの ----
+  let X;
+  X = sx(HOUSE_X); if (X > -140 && X < SW + 140) drawHouse(X);
+  X = sx(ROCK_X);  if (X > -140 && X < SW + 140) drawRock(X);
+  X = sx(SIGN_X);  if (X > -100 && X < SW + 100) drawSign(X);
+  X = sx(CHEST_X); if (X > -100 && X < SW + 100) drawChest(X);
+  drawCat();
+  drawBird();
+}
+
+/* ---------- 雨 ---------- */
+function updateRain(dt) {
+  if (st.rain > 0) {
+    st.rain -= dt;
+    st.rainSeen += dt;
+    if (st.drops.length < 90) {
+      for (let i = 0; i < 3; i++)
+        st.drops.push({ x: Math.random() * (SW + 120) - 60, y: -20, v: 620 + Math.random() * 260 });
+    }
+    if (st.rain <= 0) {
+      if (!st.umbrella && st.rainSeen > 30) unlock('rain');
+      speak('やんだ。', 2.4);
+      st.rainNext = 180 + Math.random() * 200;
+      st.rainSeen = 0;
+    }
+  } else {
+    st.rainNext -= dt;
+    if (st.rainNext <= 0) {
+      st.rain = 70 + Math.random() * 40; st.rainSeen = 0;
+      speak('あ、雨。', 2.6);
+    }
+  }
+  for (let i = st.drops.length - 1; i >= 0; i--) {
+    const d = st.drops[i];
+    d.y += d.v * dt; d.x -= 40 * dt;
+    if (d.y > SH) st.drops.splice(i, 1);
+  }
+}
+function drawRain() {
+  if (!st.drops.length) return;
+  ctx.strokeStyle = 'rgba(140,175,205,.75)'; ctx.lineWidth = 1.6;
+  ctx.beginPath();
+  for (const d of st.drops) { ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - 3, d.y + 13); }
+  ctx.stroke();
+}
+function drawUmbrella(px, py) {
+  const s = S;
+  ctx.save(); ctx.lineWidth = 3; ctx.strokeStyle = PAL.ink; ctx.fillStyle = PAL.bubble;
+  const ux = px + P.facing * 15 * s, uy = py - 96 * s;
+  ctx.beginPath();
+  ctx.moveTo(ux - 32 * s, uy);
+  ctx.quadraticCurveTo(ux, uy - 34 * s, ux + 32 * s, uy);
+  ctx.quadraticCurveTo(ux + 16 * s, uy - 6 * s, ux, uy);
+  ctx.quadraticCurveTo(ux - 16 * s, uy - 6 * s, ux - 32 * s, uy);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  wline(ux, uy - 12 * s, ux, uy + 34 * s, .8);
+  ctx.restore();
+}
+
+/* ---------- 実績 ---------- */
+const toastEl = document.getElementById('toast');
+let toastQ = [], toastT = 0;
+function unlock(id) {
+  if (unlocked.has(id)) return;
+  unlocked.add(id); persist();
+  const a = ACHS.find(a => a.id === id);
+  toastQ.push(a ? a.n : id);
+}
+function updateToast(dt) {
+  if (toastT > 0) {
+    toastT -= dt;
+    if (toastT <= 0) toastEl.classList.remove('on');
+  } else if (toastQ.length) {
+    toastEl.querySelector('.n').textContent = toastQ.shift();
+    toastEl.classList.add('on');
+    toastT = 3.0;
+  }
+}
+
+/* ---------- セリフ集 ---------- */
+const LINES = {
+  idle: ['なんか落ち着く。', '……。', '風。', 'べつに、いそいでない。', 'いい天気。', 'ここ、いいな。'],
+  rock: ['大きい。', 'どかない。', '……。', 'これは、どかない。', 'びくともしない。', 'まあ、いいか。'],
+  sign: ['「この先、なにかある」', '「この看板は看板です」', '「←」', '「ここから先も、ここです」', '「とくに、ない」', '「よんだ」'],
+  bird: ['ねえ。', 'ねえねえ。', 'きょう、いい天気ですね。', 'さっきの石、大きかったですね。', 'あの、聞いてます？',
+         'わたし、鳥なんです。', '知ってました？', 'いえ、なんでもないです。', 'ところで。', 'まだ歩くんですか。',
+         'ごはん、食べました？', 'そうなんですね。', '……。', 'ふーん。', 'たしかに。'],
+  hole: ['……深い。', '……そうでもない。', '穴だ。', 'なにも入っていない。', 'まあ、穴だから。'],
+  jump: [[10, 'たのしい。'], [30, 'まだ跳ぶ。'], [100, 'そんなに跳ぶ？'], [300, 'ひざ、だいじょうぶ？'], [1000, '……。']],
+};
+function pick(a) { return a[Math.floor(Math.random() * a.length)]; }
+
+/* ---------- そうさ ---------- */
+const keys = { l: false, r: false };
+function hold(el, on) {
+  const dn = e => { e.preventDefault(); on(true); st.idle = 0; };
+  const up = e => { e.preventDefault(); on(false); };
+  el.addEventListener('pointerdown', dn);
+  el.addEventListener('pointerup', up);
+  el.addEventListener('pointercancel', up);
+  el.addEventListener('pointerleave', up);
+}
+hold(document.getElementById('bl'), v => keys.l = v);
+hold(document.getElementById('br'), v => keys.r = v);
+document.getElementById('jump').addEventListener('pointerdown', e => { e.preventDefault(); doJump(); });
+addEventListener('keydown', e => {
+  if (e.repeat) return;
+  if (e.key === 'ArrowLeft') keys.l = true;
+  if (e.key === 'ArrowRight') keys.r = true;
+  if (e.key === ' ' || e.key === 'ArrowUp') { e.preventDefault(); doJump(); }
+  if (e.key === 'Enter') doAction();
+  st.idle = 0;
+});
+addEventListener('keyup', e => {
+  if (e.key === 'ArrowLeft') keys.l = false;
+  if (e.key === 'ArrowRight') keys.r = false;
+});
+
+function doJump() {
+  st.idle = 0;
+  if (P.indoors || P.inWater || !P.onGround) return;
+  P.vy = -JUMPV; P.onGround = false;
+  save.jumps++; st.jumpBurst++; st.burstT = 0;
+  for (const j of LINES.jump) if (save.jumps === j[0]) speak(j[1], 3);
+  if (save.jumps >= 100) unlock('jump100');
+  if (save.jumps >= 1000) unlock('jump1000');
+  persistSoon();
+}
+function persistSoon() { saveTimer = 1.5; }
+
+/* ---------- しらべる ---------- */
+const actBtn = document.getElementById('act');
+let curAct = null;
+actBtn.addEventListener('pointerdown', e => { e.preventDefault(); doAction(); });
+
+function nearest() {
+  if (P.inWater || P.indoors) return null;
+  const cands = [
+    { id: 'house', x: HOUSE_X, r: 66,
+      label: st.rain > 0 && !st.umbrella ? 'かさをとる' : (st.dayP > .82 ? 'ねる' : 'ながめる') },
+    { id: 'rock',  x: ROCK_X,  r: 62, label: 'おす' },
+    { id: 'sign',  x: SIGN_X,  r: 52, label: 'よむ' },
+    { id: 'chest', x: CHEST_X, r: 52, label: save.chest ? 'また見る' : 'あける' },
+    { id: 'hole',  x: HOLE_X,  r: 56, label: 'のぞく' },
+    { id: 'cat',   x: cat.x,   r: 60, label: cat.awake ? 'なでる' : 'おこさない' },
+    { id: 'bird',  x: bird.x,  r: 56, label: 'はなしかける' },
+  ];
+  let best = null, bd = 1e9;
+  for (const c of cands) {
+    const d = Math.abs(wdist(c.x, P.x));
+    if (d < c.r && d < bd) { bd = d; best = c; }
+  }
+  return best;
+}
+function doAction() {
+  st.idle = 0;
+  if (!curAct) return;
+  switch (curAct.id) {
+    case 'house':
+      if (st.rain > 0 && !st.umbrella) { st.umbrella = true; speak('かさ、あった。', 2.6); }
+      else if (st.dayP > .82) goSleep();
+      else speak(pick(['ここが家。', 'まだ帰らない。', 'ちょっとそこまで、のつもりだった。']), 2.8);
+      break;
+    case 'rock':
+      save.rockPush++; persistSoon();
+      speak(LINES.rock[Math.min(save.rockPush - 1, LINES.rock.length - 1)], 2.6);
+      if (save.rockPush >= 10) unlock('rock');
+      break;
+    case 'sign':
+      speak(LINES.sign[save.sign % LINES.sign.length], 3.2);
+      save.sign++; unlock('sign'); persistSoon();
+      break;
+    case 'chest':
+      if (!save.chest) { save.chest = true; persist(); speak('……からっぽ。', 3.2); unlock('chest'); }
+      else speak(pick(['やっぱり、からっぽ。', 'ていねいに閉じた。', 'ここは、そういう宝箱。']), 2.8);
+      break;
+    case 'hole':
+      speak(pick(LINES.hole), 2.8);
+      break;
+    case 'cat':
+      if (!cat.awake) {
+        cat.awake = true; cat.vx = 30;
+        speak('……起きた。', 2.6);
+        setTimeout(() => speak('ついていくか。', 2.4), 2600);
+      } else speak(pick(['もふ。', '猫だ。', 'ごろごろ言っている。']), 2.4);
+      break;
+    case 'bird':
+      bird.following = true; bird.talkT = 0.2;
+      speak(pick(['どうも。', 'こんにちは。', '……。']), 2.2);
+      break;
+  }
+}
+
+/* ---------- ねる → つぎの日 ---------- */
+let sleeping = false;
+function goSleep() {
+  if (sleeping) return;
+  sleeping = true; unlock('home');
+  st.fadeDir = 1;
+  speak('きょうも、なんとなく終わった。', 3.4);
+  setTimeout(() => {
+    save.day++; st.dayTime = 0; st.nightFlag = false;
+    st.umbrella = false; st.riverHinted = false;
+    st.rain = 0; st.drops = []; st.rainNext = 150 + Math.random() * 150;
+    cat.awake = false; cat.x = 1720; bird.following = false; bird.x = 2380; bird.sitting = true;
+    P.x = HOUSE_X + 40; P.vx = 0; st.catFollow = 0;
+    persist();
+    st.fadeDir = -1;
+    speak(pick(['ちょっとそこまで。', 'きょうも、そとに出る。', 'あさだ。']), 3);
+    sleeping = false;
+  }, 2200);
+}
+
+/* ---------- 更新 ---------- */
+function update(dt) {
+  st.time += dt;
+  st.dayTime += dt;
+  save.totalPlay += dt;
+  st.dayP = Math.min(1, st.dayTime / DAY_LEN);
+  document.body.classList.toggle('night', st.dayP > 0.93);
+  PAL = palette(st.dayP);
+  PAL.bubble = st.dayP > 0.93 ? 'rgba(52,58,92,.94)' : 'rgba(255,255,255,.93)';
+  PAL.water  = st.dayP > 0.93 ? '#39527a' : '#a9d5ea';
+  PAL.hole   = st.dayP > 0.93 ? '#1b2038' : '#4c5570';
+  PAL.warm   = 'rgba(255,214,140,.9)';
+
+  if (st.dayP >= 0.82 && !st.nightFlag) { st.nightFlag = true; unlock('dayend'); speak('日が暮れた。', 3); }
+
+  // --- 入力 ---
+  const dir = (keys.r ? 1 : 0) - (keys.l ? 1 : 0);
+  if (dir !== 0 && !P.inWater && !P.indoors) {
+    P.vx = dir * WALK; P.facing = dir; P.walking = true; st.idle = 0;
+  } else {
+    P.vx *= Math.pow(0.0015, dt); P.walking = false;
+    if (Math.abs(P.vx) < 3) P.vx = 0;
+    st.idle += dt;
+  }
+  if (P.walking) P.phase += dt * 8.5;
+
+  // --- 移動 ---
+  P.x += P.vx * dt;
+  if (P.x >= WORLD) { P.x -= WORLD; save.laps++; if (save.laps >= 20) unlock('lap20'); persistSoon(); }
+  if (P.x < 0) P.x += WORLD;
+
+  // --- じゅうりょく ---
+  if (!P.onGround) {
+    P.vy += GRAV * dt; P.y += P.vy * dt;
+    if (P.y >= 0) { P.y = 0; P.vy = 0; P.onGround = true; }
+  }
+
+  // --- 川 ---
+  const overRiver = Math.abs(wdist(P.x, RIVER_X)) < RIVER_W / 2 - 6;
+  if (!save.bridge && overRiver && P.onGround && !P.inWater) {
+    P.inWater = true; P.waterT = 0; P.vx = 0;
+    unlock('splash');
+    speak('ポチャン。', 1.8);
+    for (let i = 0; i < 16; i++)
+      st.splash.push({ x: 0, y: 0, vx: (Math.random() - .5) * 200, vy: -120 - Math.random() * 180, t: 1 });
+    setTimeout(() => speak('やっぱり。', 2.4), 1700);
+    setTimeout(() => {
+      st.helper = { x: RIVER_X + 230, phase: 0, state: 'come', t: 0 };
+    }, 3600);
+  }
+  if (P.inWater) {
+    P.waterT += dt;
+    P.y = Math.min(32 * S, P.y + 46 * dt);
+  }
+  if (!save.bridge && !P.inWater && P.onGround && Math.abs(wdist(P.x, RIVER_X)) < RIVER_W / 2 + 44) {
+    if (!st.riverHinted) { st.riverHinted = true; speak('……渡れるかな。', 2.8); }
+  }
+
+  // --- たすけてくれる棒人間 ---
+  if (st.helper) {
+    const H = st.helper;
+    H.t += dt;
+    if (H.state === 'come') {
+      H.x -= 78 * dt; H.phase += dt * 8.5;
+      if (H.x <= RIVER_X + RIVER_W / 2 + 26) {
+        H.state = 'talk'; H.t = 0;
+        speak('橋、ありますよ。', 3);
+      }
+    } else if (H.state === 'talk') {
+      if (H.t > 2.4) {
+        save.bridge = true; persist(); unlock('bridge');
+        H.state = 'go'; H.t = 0;
+        P.inWater = false; P.y = 0; P.vy = 0; P.onGround = true;
+        P.x = RIVER_X - RIVER_W / 2 - 30;
+        setTimeout(() => speak('最初から、あった。', 3), 900);
+      }
+    } else {
+      H.x += 78 * dt; H.phase += dt * 8.5;
+      if (H.x > RIVER_X + 320) st.helper = null;
+    }
+  }
+
+  // --- しぶき ---
+  for (let i = st.splash.length - 1; i >= 0; i--) {
+    const s2 = st.splash[i];
+    s2.vy += 900 * dt; s2.x += s2.vx * dt; s2.y += s2.vy * dt; s2.t -= dt * 1.2;
+    if (s2.t <= 0) st.splash.splice(i, 1);
+  }
+
+  // --- 猫 ---
+  if (cat.awake) {
+    cat.x += cat.vx * dt; cat.phase += dt * 7;
+    if (cat.x >= WORLD) cat.x -= WORLD;
+    const d = Math.abs(wdist(cat.x, P.x));
+    if (d < 110) { st.catFollow += dt; if (st.catFollow > 26) unlock('cat'); }
+    else st.catFollow = Math.max(0, st.catFollow - dt * .6);
+  }
+
+  // --- 鳥 ---
+  if (!bird.following && Math.abs(wdist(bird.x, P.x)) < 150) {
+    bird.following = true; bird.talkT = Math.min(bird.talkT, 1.5);
+  }
+  if (bird.following) {
+    const d = wdist(P.x, bird.x);
+    if (Math.abs(d) > 46) {
+      bird.x += Math.sign(d) * 92 * dt;
+      bird.hop += dt * 9;
+      bird.y = Math.abs(Math.sin(bird.hop)) * 11 * S;
+    } else { bird.y *= 0.8; }
+    if (bird.x >= WORLD) bird.x -= WORLD; if (bird.x < 0) bird.x += WORLD;
+    bird.talkT -= dt;
+    if (bird.talkT <= 0) {
+      bird.talkT = 5 + Math.random() * 4;
+      birdSpeak = { text: pick(LINES.bird), t: 2.6 };
+      save.birdTalks++; persistSoon();
+      if (save.birdTalks >= 20) unlock('bird');
+    }
+  }
+  if (birdSpeak) { birdSpeak.t -= dt; if (birdSpeak.t <= 0) birdSpeak = null; }
+
+  // --- あなを見つめる ---
+  if (!P.walking && P.onGround && Math.abs(wdist(P.x, HOLE_X)) < 70) {
+    st.holeStare += dt;
+    if (st.holeStare > 180) unlock('hole3');
+  } else st.holeStare = 0;
+
+  // --- なにもしない ---
+  if (st.idle > 120) unlock('nothing');
+  if (st.idle > 1800) unlock('sleep');
+  if (st.idle - st.lastIdleLine > 22 && st.idle > 20 && !bubble) {
+    st.lastIdleLine = st.idle;
+    speak(pick(LINES.idle), 3);
+  }
+  if (st.idle < 1) st.lastIdleLine = 0;
+
+  // --- ジャンプ連打 ---
+  st.burstT += dt;
+  if (st.burstT > 6) { st.jumpBurst = 0; st.burstT = 0; }
+
+  // --- きぶん ---
+  let m = '🙂', note = '';
+  if (st.dayP > 0.86) { m = '😴'; note = 'ねむい'; }
+  else if (st.jumpBurst >= 12) { m = '🤔'; note = 'なぜ跳ぶのか'; }
+  else if (save.jumps >= 1000) { m = '😐'; note = ''; }
+  else if (st.idle > 60) { m = '😴'; note = 'うとうと'; }
+  else if (st.idle > 20) { m = '😌'; note = 'おちついている'; }
+  else if (st.rain > 0 && !st.umbrella) { m = '😐'; note = 'ぬれている'; }
+  else if (P.walking) { m = '🙂'; note = ''; }
+  if (m !== st.mood || note !== st.moodNote) {
+    st.mood = m; st.moodNote = note;
+    document.getElementById('mood').innerHTML = 'きょうのきぶん：<span class="em">' + m + '</span>' + (note ? ' <span style="font-size:11px;opacity:.7">' + note + '</span>' : '');
+  }
+
+  // --- ふきだし ---
+  if (bubble) { bubble.t += dt; if (bubble.t > bubble.life) bubble = null; }
+
+  // --- 雨 ---
+  updateRain(dt);
+
+  // --- カメラ ---
+  const target = P.x - SW * (0.5 - P.facing * 0.08);
+  let d2 = wdist(target, camX);
+  camX += d2 * Math.min(1, dt * 4.5);
+  camX = ((camX % WORLD) + WORLD) % WORLD;
+
+  // --- しらべるボタン ---
+  const nx = nearest();
+  if ((nx && nx.id) !== (curAct && curAct.id) || (nx && nx.label !== actBtn.textContent)) {
+    curAct = nx;
+    if (nx) { actBtn.textContent = nx.label; actBtn.classList.add('on'); }
+    else actBtn.classList.remove('on');
+  }
+
+  // --- フェード ---
+  if (st.fadeDir) {
+    st.fade += st.fadeDir * dt * 1.1;
+    if (st.fade >= 1) { st.fade = 1; st.fadeDir = 0; }
+    if (st.fade <= 0) { st.fade = 0; st.fadeDir = 0; }
+  }
+
+  // --- ステータス ---
+  const sub = document.getElementById('sub');
+  const txt = save.day + '日目　' + save.laps + '周　' + save.jumps + '回とんだ';
+  if (sub.textContent !== txt) sub.textContent = txt;
+
+  // --- 保存 ---
+  if (saveTimer > 0) { saveTimer -= dt; if (saveTimer <= 0) persist(); }
+
+  updateToast(dt);
+}
+
+let birdSpeak = null;
+
+/* ---------- 描画 ---------- */
+function render() {
+  ctx.clearRect(0, 0, SW, SH);
+  drawWorld();
+
+  const px = sx(P.x), py = groundY + P.y;
+
+  // 助けてくれる棒人間
+  if (st.helper) {
+    const hx = sx(st.helper.x);
+    drawPerson(hx, groundY, {
+      facing: st.helper.state === 'go' ? 1 : -1,
+      walking: st.helper.state !== 'talk',
+      phase: st.helper.phase, expr: 'smile', scale: 1
+    });
+  }
+
+  // 足もとのかげ
+  if (!P.inWater) {
+    const h = -P.y / (JUMPV * JUMPV / (2 * GRAV));
+    ctx.save();
+    ctx.globalAlpha = 0.18 * (1 - h * 0.6);
+    ctx.fillStyle = PAL.ink;
+    ctx.beginPath();
+    ctx.ellipse(px, groundY + 2, (18 - h * 5) * S, 3.6 * S, 0, 0, 6.3);
+    ctx.fill(); ctx.restore();
+  }
+
+  // 本人
+  drawPerson(px, py, {
+    facing: P.facing, walking: P.walking, phase: P.phase,
+    jumping: !P.onGround,
+    expr: P.inWater ? 'oh' : (st.idle > 60 || st.dayP > .88 ? 'sleep' : (st.idle > 20 ? 'smile' : 'nose'))
+  });
+  if (st.rain > 0 && st.umbrella) drawUmbrella(px, py);
+
+  // 水につかっているところ（人の上に半透明の水をかぶせる）
+  if (P.inWater) {
+    const rx2 = sx(RIVER_X), rw2 = RIVER_W * S;
+    ctx.save();
+    ctx.globalAlpha = .62; ctx.fillStyle = PAL.water;
+    ctx.fillRect(rx2 - rw2 / 2, groundY - 1, rw2, 82 * S);
+    ctx.restore();
+  }
+
+  // しぶき
+  if (st.splash.length) {
+    ctx.fillStyle = PAL.water;
+    for (const s2 of st.splash) {
+      ctx.globalAlpha = Math.max(0, s2.t);
+      ctx.beginPath(); ctx.arc(px + s2.x, groundY + s2.y, 3.4 * S, 0, 6.3); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // 鳥のふきだし
+  if (birdSpeak) drawBubble(sx(bird.x), groundY - bird.y - 34 * S, birdSpeak.text, Math.min(1, birdSpeak.t * 2));
+  // 本人のふきだし
+  if (bubble) {
+    const a = Math.min(1, bubble.t * 5) * Math.min(1, (bubble.life - bubble.t) * 3);
+    const who = st.helper && st.helper.state === 'talk' && bubble.text.indexOf('橋') === 0
+      ? sx(st.helper.x) : px;
+    drawBubble(who, py - 104 * S, bubble.text, a);
+  }
+
+  drawRain();
+
+  if (st.fade > 0) {
+    ctx.fillStyle = 'rgba(20,24,44,' + st.fade + ')';
+    ctx.fillRect(0, 0, SW, SH);
+  }
+}
+
+/* ---------- ループ ---------- */
+let last = performance.now(), seedT = 0;
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  seedT += dt;
+  if (seedT > 0.11) { seedT = 0; seedFrame = (seedFrame + 137) & 4095; }
+  jc = 0;
+  if (st.started) update(dt); else { PAL = palette(0.2); PAL.bubble = 'rgba(255,255,255,.93)'; PAL.water = '#a9d5ea'; PAL.hole = '#4c5570'; }
+  if (st.started) render();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+/* ---------- 実績パネル ---------- */
+const achPanel = document.getElementById('achPanel');
+document.getElementById('btnAch').addEventListener('click', () => {
+  const list = document.getElementById('achList');
+  list.innerHTML = '';
+  for (const a of ACHS) {
+    const got = unlocked.has(a.id);
+    const d = document.createElement('div');
+    d.className = 'ach' + (got ? '' : ' lock');
+    d.innerHTML = '<div class="mk">' + (got ? '●' : '○') + '</div><div><div class="nm">' +
+      (got ? a.n : '？？？') + '</div><div class="hi">' + a.h + '</div></div>';
+    list.appendChild(d);
+  }
+  document.getElementById('achLead').textContent =
+    unlocked.size + ' / ' + ACHS.length + '　目的は、なんとなく毎日を過ごすことです。';
+  achPanel.classList.add('on');
+});
+document.getElementById('achClose').addEventListener('click', () => achPanel.classList.remove('on'));
+
+/* ---------- タイトル ---------- */
+(function titleArt() {
+  const tc = document.getElementById('tcv'), tx = tc.getContext('2d');
+  let t = 0;
+  function frame() {
+    if (st.started) return;
+    t += 0.016;
+    tx.clearRect(0, 0, 300, 300);
+    ctx = tx;                       // 共通の描画関数をそのまま流用する
+    const keep = PAL;
+    PAL = { ink: '#22315c', bubble: 'rgba(255,255,255,.92)' };
+    jc = 0;
+    drawPerson(150, 252, { facing: 1, walking: true, phase: t * 8.5, expr: 'smile', scale: 2.0 / S });
+    PAL = keep;
+    ctx = mainCtx;
+    requestAnimationFrame(frame);
+  }
+  frame();
+})();
+
+document.getElementById('titleFoot').textContent =
+  save.day > 1 ? save.day + '日目のつづきから' : 'はじめて外に出る';
+
+document.getElementById('start').addEventListener('click', () => {
+  document.getElementById('title').classList.add('off');
+  st.started = true;
+  last = performance.now();
+  P.x = HOUSE_X + 60;
+  speak(save.day > 1 ? 'きょうも、ちょっとそこまで。' : 'ちょっとそこまで。', 3.4);
+});
+
+/* 保存（離脱時） */
+addEventListener('visibilitychange', () => { if (document.hidden) persist(); });
+addEventListener('pagehide', persist);
+</script>
+</body>
+</html>
