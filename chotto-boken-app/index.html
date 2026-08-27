@@ -395,8 +395,15 @@ function drawPerson(x, y, o) {
   const aSwing = jumping ? 0 : -Math.sin(ph) * 6 * walking;
   for (const side of [-1, 1]) {
     const shx = side * 9, shy = -48 + yb;
-    const hyy = jumping ? -58 + yb : -25 + yb + (side === 1 ? aSwing : -aSwing) * .35;
-    const hx2 = jumping ? side * 26 : side * 20 + (side === 1 ? aSwing : -aSwing) * .5;
+    let hx2, hyy;
+    if (o.hold && side === f) {          // かさなどを持っている手は動かさない
+      hx2 = o.hold[0]; hyy = o.hold[1] + yb;
+    } else if (jumping) {
+      hx2 = side * 26; hyy = -58 + yb;
+    } else {
+      hx2 = side * 20 + (side === 1 ? aSwing : -aSwing) * .5;
+      hyy = -25 + yb + (side === 1 ? aSwing : -aSwing) * .35;
+    }
     wline(shx, shy, hx2, hyy, 1.2);
     ctx.fillStyle = 'rgba(0,0,0,0)';
     tear(hx2, hyy + 3, 3.2, 5.2, side * .32);
@@ -848,17 +855,33 @@ function drawRain() {
   for (const d of st.drops) { ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - 3, d.y + 13); }
   ctx.stroke();
 }
-function drawUmbrella(px, py) {
-  const s = S;
-  ctx.save(); ctx.lineWidth = 3; ctx.strokeStyle = PAL.ink; ctx.fillStyle = PAL.bubble;
-  const ux = px + P.facing * 15 * s, uy = py - 96 * s;
+/* かさ。棒人間のあとに描き、柄が手までつながって見えるようにする。
+   頭が大きいので、柄は顔の横（目より外側）を通る位置に寄せてある */
+const UMB_HAND = [24, -30];   // かさを持つ手の位置（ローカル座標。xには向きを掛ける）
+function drawUmbrella(px, py, f, yb) {
+  const X = x => px + x * S, Y = y => py + (y + yb) * S;
+  const cx = f * 14, cy = -100;
+  ctx.save();
+  ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+  ctx.strokeStyle = PAL.ink; ctx.fillStyle = PAL.bubble;
+  // え（手のところまでまっすぐ伸ばす）
   ctx.beginPath();
-  ctx.moveTo(ux - 32 * s, uy);
-  ctx.quadraticCurveTo(ux, uy - 34 * s, ux + 32 * s, uy);
-  ctx.quadraticCurveTo(ux + 16 * s, uy - 6 * s, ux, uy);
-  ctx.quadraticCurveTo(ux - 16 * s, uy - 6 * s, ux - 32 * s, uy);
+  ctx.moveTo(X(cx), Y(cy + 4));
+  ctx.lineTo(X(f * UMB_HAND[0]), Y(UMB_HAND[1] + 3));
+  ctx.stroke();
+  // かさの面
+  ctx.beginPath();
+  ctx.moveTo(X(cx - 35), Y(cy));
+  ctx.quadraticCurveTo(X(cx - 26), Y(cy - 30), X(cx), Y(cy - 33));
+  ctx.quadraticCurveTo(X(cx + 26), Y(cy - 30), X(cx + 35), Y(cy));
+  ctx.quadraticCurveTo(X(cx + 17), Y(cy - 10), X(cx), Y(cy - 2));
+  ctx.quadraticCurveTo(X(cx - 17), Y(cy - 10), X(cx - 35), Y(cy));
   ctx.closePath(); ctx.fill(); ctx.stroke();
-  wline(ux, uy - 12 * s, ux, uy + 34 * s, .8);
+  // ほね
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(X(cx), Y(cy - 31)); ctx.lineTo(X(cx), Y(cy - 2)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(X(cx - 19), Y(cy - 23)); ctx.lineTo(X(cx - 16), Y(cy - 6)); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(X(cx + 19), Y(cy - 23)); ctx.lineTo(X(cx + 16), Y(cy - 6)); ctx.stroke();
   ctx.restore();
 }
 
@@ -1265,12 +1288,15 @@ function render() {
   }
 
   // 本人
+  const holdUmb = st.rain > 0 && st.umbrella && !P.inWater;
+  const bobv = !P.onGround ? -3 : -Math.abs(Math.sin(P.phase * 2)) * 1.8 * (P.walking ? 1 : 0);
   drawPerson(px, py, {
     facing: P.facing, walking: P.walking, phase: P.phase,
     jumping: !P.onGround,
-    expr: currentExpr(), blink: st.blink > 0
+    expr: currentExpr(), blink: st.blink > 0,
+    hold: holdUmb ? [P.facing * UMB_HAND[0], UMB_HAND[1]] : null
   });
-  if (st.rain > 0 && st.umbrella) drawUmbrella(px, py);
+  if (holdUmb) drawUmbrella(px, py, P.facing, bobv);
 
   // 水につかっているところ（人の上に半透明の水をかぶせる）
   if (P.inWater) {
